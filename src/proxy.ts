@@ -1,7 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-
-const ROTAS_PUBLICAS = ['/login', '/convite', '/recuperar-senha', '/nova-senha', '/auth']
+import { ehRotaPublica } from '@/lib/auth/public-routes'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -34,7 +33,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const ehPublica = ROTAS_PUBLICAS.some((rota) => request.nextUrl.pathname.startsWith(rota))
+  const ehPublica = ehRotaPublica(request.nextUrl.pathname)
 
   if (!user && !ehPublica) {
     const url = request.nextUrl.clone()
