@@ -1018,7 +1018,7 @@ describe('canAccessCourse — colaborador', () => {
 })
 ```
 
-O penúltimo e o último teste protegem contra o bug mais provável desta função: comparar `user.areaId === course.areaId` quando ambos são `null` e conceder acesso a quem não tem setor. A restrição do banco impede curso comum sem área, mas a função não pode depender disso.
+O **último** teste é o que protege contra o bug mais provável desta função: comparar `user.areaId === course.areaId` quando ambos são `null` e conceder acesso a quem não tem setor. Ele é o único que falharia se a guarda `!== null` fosse removida — o penúltimo (área nula contra curso com área) passa nas duas implementações, então não segure regressão nele. A restrição do banco impede curso comum sem área, mas a função não pode depender disso.
 
 - [ ] **Step 3: Rodar e confirmar que falha**
 
@@ -1096,7 +1096,7 @@ export type {
 - [ ] **Step 6: Rodar os testes e confirmar que passam**
 
 Run: `npm test -- src/lib/access`
-Expected: PASS — 22 testes.
+Expected: PASS — 23 testes.
 
 - [ ] **Step 7: Commit**
 
