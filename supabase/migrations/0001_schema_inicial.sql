@@ -242,3 +242,45 @@ create policy profiles_ativa_a_si on public.profiles
     and area_id is not distinct from public.auth_profile_area()
     and email = (select p.email from public.profiles p where p.id = auth.uid())
   );
+
+-- ---------------------------------------------------------------------
+-- Invariante: a plataforma sempre precisa de ao menos um admin ativo.
+-- Sem isto, dois admins podem se rebaixar/desativar um ao outro em paralelo:
+-- cada UPDATE olha só a própria linha-alvo (que não é a de quem está logado),
+-- então nem a guarda de "não pode se autossabotar" em código nem a política
+-- profiles_admin_escreve percebem que, juntas, as duas escritas zeram a
+-- contagem de admins. SECURITY DEFINER pelo mesmo motivo dos helpers acima:
+-- precisa enxergar todos os perfis, não só os que o RLS liberaria para quem
+-- está fazendo o UPDATE/DELETE.
+-- ---------------------------------------------------------------------
+
+create or replace function public.exige_ao_menos_um_admin()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  deixou_de_ser_admin boolean;
+begin
+  deixou_de_ser_admin :=
+    (old.role = 'admin' and old.status = 'active')
+    and (tg_op = 'DELETE' or new.role <> 'admin' or new.status <> 'active');
+
+  -- O FOR UPDATE é o ponto central da correção: sob READ COMMITTED, sem ele,
+  -- duas transações concorrentes (uma rebaixando A, outra rebaixando B) cada
+  -- uma enxergaria a outra ainda como admin ativo e as duas passariam. Com o
+  -- FOR UPDATE, a transação de A bloqueia na linha de B até B committar; ao
+  -- reavaliar, B já não bate mais com role='admin' and status='active', o
+  -- EXISTS falha e a transação de A é abortada.
+  if deixou_de_ser_admin and not exists (
+    select 1 from public.profiles p
+    where p.role = 'admin' and p.status = 'active' and p.id <> old.id
+    for update
+  ) then
+    raise exception 'A plataforma precisa de ao menos um administrador ativo.';
+  end if;
+
+  return case when tg_op = 'DELETE' then old else new end;
+end;
+$$;
+
+create trigger profiles_exige_admin
+  before update or delete on public.profiles
+  for each row execute function public.exige_ao_menos_um_admin();

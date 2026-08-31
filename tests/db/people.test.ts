@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { adminClient, createTestUser } from './client'
+import { adminClient, authClient, createTestUser } from './client'
 
 const db = adminClient()
 
@@ -61,5 +61,162 @@ describe('perfis', () => {
 
     const { data } = await db.from('profiles').select('area_id').eq('id', id).single()
     expect(data!.area_id).toBeNull()
+  })
+})
+
+// Os testes acima usam service_role, que ignora RLS por completo — não provam
+// nada sobre a política profiles_admin_escreve. Aqui autenticamos como membro,
+// líder e admin de verdade: membro e líder precisam falhar ao tentar promover
+// outra pessoa a admin, e o admin precisa ter sucesso onde os outros
+// falharam — sem o caso de controle do admin, o teste só provaria "algo
+// falhou", não que a política distingue por papel. E, como um update barrado
+// pelo RLS pode não devolver erro nenhum e simplesmente não afetar linha
+// nenhuma, a prova real é reler com o admin client, não só checar o retorno.
+describe('RLS: escrita em profiles (profiles_admin_escreve)', () => {
+  it('bloqueia troca de papel por quem não é admin; permite para admin', async () => {
+    const stamp = Date.now()
+
+    const memberEmail = `membro-profiles-${stamp}@gexcorp.com.br`
+    const leaderEmail = `lider-profiles-${stamp}@gexcorp.com.br`
+    const adminEmail = `admin-profiles-${stamp}@gexcorp.com.br`
+
+    await createTestUser({ email: memberEmail, fullName: 'Membro RLS', role: 'member' })
+    await createTestUser({ email: leaderEmail, fullName: 'Líder RLS', role: 'leader' })
+    await createTestUser({ email: adminEmail, fullName: 'Admin RLS', role: 'admin' })
+
+    const targetId = await createTestUser({
+      email: `alvo-profiles-${stamp}@gexcorp.com.br`,
+      fullName: 'Alvo RLS',
+      role: 'member',
+    })
+
+    for (const [papel, email] of [
+      ['membro', memberEmail],
+      ['líder', leaderEmail],
+    ] as const) {
+      const asNaoAdmin = await authClient(email)
+
+      await asNaoAdmin.from('profiles').update({ role: 'admin' }).eq('id', targetId)
+
+      const { data: aindaMembro } = await db
+        .from('profiles')
+        .select('role')
+        .eq('id', targetId)
+        .single()
+      expect(aindaMembro?.role, `${papel} não deveria conseguir promover outra pessoa`).toBe(
+        'member',
+      )
+    }
+
+    const asAdmin = await authClient(adminEmail)
+    const { error: adminUpdateError } = await asAdmin
+      .from('profiles')
+      .update({ role: 'leader' })
+      .eq('id', targetId)
+    expect(adminUpdateError).toBeNull()
+
+    const { data: atualizado } = await db
+      .from('profiles')
+      .select('role')
+      .eq('id', targetId)
+      .single()
+    expect(atualizado?.role).toBe('leader')
+  })
+})
+
+// Prova o trigger profiles_exige_admin (invariante do banco: sempre existe ao
+// menos um admin ativo). A invariante é global à tabela inteira — não dá para
+// isolar "o admin do meu teste" dos admins deixados ativos por outros
+// arquivos/execuções anteriores. Por isso o teste primeiro neutraliza
+// (desativa) qualquer outro admin ativo que já exista, garantindo o cenário
+// "só existe um admin" de verdade, e devolve todos ao estado original ao
+// final — mesmo se uma asserção falhar no meio do caminho.
+describe('invariante: sempre existe ao menos um admin ativo (profiles_exige_admin)', () => {
+  it('bloqueia rebaixar/desativar o último admin ativo; permite quando há outro', async () => {
+    const stamp = Date.now()
+
+    const soloAdminId = await createTestUser({
+      email: `admin-solo-${stamp}@gexcorp.com.br`,
+      fullName: 'Admin Solo',
+      role: 'admin',
+    })
+
+    // Com o admin solo já ativo, sempre sobra ao menos um admin ativo durante
+    // a limpeza abaixo — nenhuma dessas desativações esbarra na invariante.
+    const { data: outrosAdmins } = await db
+      .from('profiles')
+      .select('id')
+      .eq('role', 'admin')
+      .eq('status', 'active')
+      .neq('id', soloAdminId)
+
+    const idsParaRestaurar = (outrosAdmins ?? []).map((p) => p.id)
+
+    try {
+      for (const id of idsParaRestaurar) {
+        const { error } = await db.from('profiles').update({ status: 'inactive' }).eq('id', id)
+        expect(error).toBeNull()
+      }
+
+      // Cenário: só o admin solo está ativo. Rebaixar o papel dele precisa falhar.
+      const { error: rebaixarError } = await db
+        .from('profiles')
+        .update({ role: 'member' })
+        .eq('id', soloAdminId)
+      expect(rebaixarError?.code).toBe('P0001')
+      expect(rebaixarError?.message).toBe(
+        'A plataforma precisa de ao menos um administrador ativo.',
+      )
+
+      const { data: aindaAdmin } = await db
+        .from('profiles')
+        .select('role, status')
+        .eq('id', soloAdminId)
+        .single()
+      expect(aindaAdmin).toMatchObject({ role: 'admin', status: 'active' })
+
+      // Desativar (sem trocar o papel) também precisa falhar, pelo mesmo motivo.
+      const { error: desativarError } = await db
+        .from('profiles')
+        .update({ status: 'inactive' })
+        .eq('id', soloAdminId)
+      expect(desativarError?.code).toBe('P0001')
+
+      const { data: aindaAtivo } = await db
+        .from('profiles')
+        .select('status')
+        .eq('id', soloAdminId)
+        .single()
+      expect(aindaAtivo?.status).toBe('active')
+
+      // Controle: com um segundo admin ativo, rebaixar o primeiro tem que
+      // funcionar — isso é o que prova que o trigger discrimina pela
+      // contagem, em vez de bloquear qualquer mudança.
+      await createTestUser({
+        email: `admin-segundo-${stamp}@gexcorp.com.br`,
+        fullName: 'Admin Segundo',
+        role: 'admin',
+      })
+
+      const { error: rebaixarComParError } = await db
+        .from('profiles')
+        .update({ role: 'member' })
+        .eq('id', soloAdminId)
+      expect(rebaixarComParError).toBeNull()
+
+      const { data: rebaixado } = await db
+        .from('profiles')
+        .select('role')
+        .eq('id', soloAdminId)
+        .single()
+      expect(rebaixado?.role).toBe('member')
+    } finally {
+      // Reativar nunca esbarra no trigger (só bloqueia quem estava ativo
+      // deixando de ser admin/ativo) — sempre seguro de rodar, mesmo se uma
+      // asserção acima já tiver falhado.
+      for (const id of idsParaRestaurar) {
+        await db.from('profiles').update({ status: 'active' }).eq('id', id)
+      }
+    }
   })
 })

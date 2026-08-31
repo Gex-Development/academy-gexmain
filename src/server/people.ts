@@ -93,8 +93,31 @@ export async function invitePerson(
 
     if (profileError) {
       // Sem perfil o usuário não consegue usar nada: desfaz o convite para não
-      // deixar uma conta órfã no Auth.
-      await admin.auth.admin.deleteUser(data.user.id)
+      // deixar uma conta órfã no Auth. deleteUser não lança em falha de API —
+      // devolve { error } — então essa falha precisa ser conferida também, ou
+      // o rollback pode "silenciosamente" não acontecer.
+      try {
+        const { error: rollbackError } = await admin.auth.admin.deleteUser(data.user.id)
+        if (rollbackError) throw rollbackError
+      } catch (rollbackError) {
+        // O pior caso: nem o perfil foi criado, nem o convite pôde ser desfeito.
+        // O e-mail fica preso no Auth, não pode ser reconvidado, e só dá para
+        // resolver manualmente — por isso a mensagem nomeia o e-mail, e o log
+        // guarda os dois erros (não só o mais recente) para quem for investigar.
+        console.error('[invitePerson] falha ao desfazer convite órfão; requer limpeza manual', {
+          email,
+          profileError,
+          rollbackError,
+        })
+        return {
+          ok: false,
+          error:
+            `Não foi possível concluir o convite, e também não foi possível desfazê-lo. ` +
+            `O e-mail ${email} ficou preso no Supabase Auth — peça ao time técnico para removê-lo ` +
+            `manualmente antes de tentar convidar essa pessoa de novo.`,
+        }
+      }
+
       throw profileError
     }
 
