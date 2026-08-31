@@ -2141,7 +2141,21 @@ describe('tabela areas', () => {
 })
 ```
 
-O segundo teste é a prova de que o RLS está de fato barrando quem não tem sessão. Ele precisa que `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` esteja no `.env.local`.
+Estes dois testes são a primeira prova real de que o RLS funciona — todos os
+anteriores rodam como `service_role`, que ignora RLS por completo. Duas regras
+valem para **todo** teste de política daqui em diante:
+
+1. **Prove os dois lados.** Um teste que só afirma "o cliente anônimo não vê nada"
+   passa numa tabela vazia sem provar coisa alguma. Insira uma linha conhecida com
+   o cliente admin, confirme que o admin **vê** essa linha, e só então confirme que
+   o anônimo **não** vê. O contraste é a evidência.
+2. **Prove que a política discrimina por papel, não que "algo falhou".** Ao testar
+   escrita, inclua o caso de controle: o não-admin é recusado **e** o admin é
+   aceito. E, para `update`, verifique a linha armazenada pelo cliente admin — um
+   update filtrado por RLS reporta sucesso enquanto altera zero linhas.
+
+O helper `authClient(email, senha)` em `tests/db/client.ts` existe para isso.
+Ambos os testes precisam de `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` no `.env.local`.
 
 - [ ] **Step 8: Rodar tudo**
 
