@@ -329,7 +329,7 @@ Os transacionais saem pelo Resend com o domínio `gexcorp.com.br` verificado. Fa
 
 ## 12. Arquitetura técnica
 
-**Stack:** Next.js 15 (App Router) com TypeScript, Tailwind CSS e shadcn/ui.
+**Stack:** Next.js 16 (App Router) com TypeScript, Tailwind CSS e shadcn/ui.
 Supabase para Postgres, Auth e Storage. Deploy na Vercel, no subdomínio
 `academy.gexcorp.com.br`.
 
@@ -371,7 +371,7 @@ provedor e identificador; `storage/` recebe um arquivo e devolve um caminho.
 
 ```
 NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 SUPABASE_SERVICE_ROLE_KEY     # servidor apenas
 RESEND_API_KEY                # servidor apenas
 EMAIL_FROM
@@ -391,7 +391,7 @@ NEXT_PUBLIC_SITE_URL
 - Toda server action valida a entrada com Zod e verifica o papel antes de agir. Não existe
   operação que confie no que a tela enviou.
 - Links de download expiram em 60 segundos.
-- Sessão em cookies `httpOnly` via `@supabase/ssr`; o middleware do Next protege as rotas
+- Sessão em cookies `httpOnly` via `@supabase/ssr`; o `proxy.ts` do Next 16 protege as rotas
   por grupo, e cada página revalida a permissão do recurso específico.
 - Usuário com `status = 'inactive'` perde acesso imediatamente, sem depender da expiração
   da sessão.
