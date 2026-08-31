@@ -1115,7 +1115,9 @@ git commit -m "feat(access): regra de acesso a cursos como funcao pura testada"
 - Create: `src/lib/supabase/admin.ts`
 - Create: `src/lib/auth/session.ts`
 - Create: `src/lib/auth/guards.ts`
+- Create: `src/lib/auth/public-routes.ts`
 - Create: `src/proxy.ts`
+- Test: `src/lib/auth/public-routes.test.ts`
 - Create: `src/server/result.ts`
 - Test: `src/lib/auth/guards.test.ts`
 
@@ -1128,6 +1130,7 @@ git commit -m "feat(access): regra de acesso a cursos como funcao pura testada"
   - `type CurrentUser = AccessUser & { fullName: string; email: string; avatarUrl: string | null }`
   - `getCurrentUser(): Promise<CurrentUser | null>` em `src/lib/auth/session.ts`
   - `assertRole(user: CurrentUser | null, roles: Role[]): CurrentUser` em `src/lib/auth/guards.ts`
+  - `ehRotaPublica(pathname: string): boolean` em `src/lib/auth/public-routes.ts`
   - `type ActionResult<T>`, `ok()`, `fail()` em `src/server/result.ts`
 
 - [ ] **Step 1: Criar o cliente de servidor**
@@ -1374,15 +1377,40 @@ export function toActionError(error: unknown): ActionResult<never> {
 }
 ```
 
-- [ ] **Step 7: Criar o `proxy.ts` que renova a sessão e protege as rotas**
+- [ ] **Step 7: Criar o predicado de rota pública**
+
+Crie `src/lib/auth/public-routes.ts`:
+
+```typescript
+export const ROTAS_PUBLICAS = ['/login', '/convite', '/recuperar-senha', '/nova-senha', '/auth']
+
+/**
+ * Uma rota é pública quando é exatamente uma das listadas, ou um caminho abaixo
+ * dela.
+ *
+ * Comparar por prefixo solto (`pathname.startsWith(rota)`) tornaria `/authors`
+ * pública só porque começa com `/auth` — e a falha seria silenciosa, sem erro e
+ * sem teste vermelho. Por isso a fronteira `/` é obrigatória.
+ */
+export function ehRotaPublica(pathname: string): boolean {
+  return ROTAS_PUBLICAS.some((rota) => pathname === rota || pathname.startsWith(`${rota}/`))
+}
+```
+
+Escreva `src/lib/auth/public-routes.test.ts` cobrindo, no mínimo: cada rota
+listada casando exatamente; subcaminhos (`/auth/confirm`, `/convite/aceitar`)
+casando; e os quase-acertos **não** casando (`/authors`, `/login-history`,
+`/auth-log`, `/convites`), além de `/` e `/admin/pessoas`. Os quase-acertos são o
+motivo deste módulo existir.
+
+- [ ] **Step 8: Criar o `proxy.ts` que renova a sessão e protege as rotas**
 
 Crie `src/proxy.ts` (Next 16 — o nome `middleware.ts` está descontinuado):
 
 ```typescript
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-
-const ROTAS_PUBLICAS = ['/login', '/convite', '/recuperar-senha', '/nova-senha', '/auth']
+import { ehRotaPublica } from '@/lib/auth/public-routes'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -1415,7 +1443,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const ehPublica = ROTAS_PUBLICAS.some((rota) => request.nextUrl.pathname.startsWith(rota))
+  const ehPublica = ehRotaPublica(request.nextUrl.pathname)
 
   if (!user && !ehPublica) {
     const url = request.nextUrl.clone()
@@ -1434,12 +1462,12 @@ export const config = {
 }
 ```
 
-- [ ] **Step 8: Rodar os testes e o typecheck**
+- [ ] **Step 9: Rodar os testes, o typecheck e o build**
 
-Run: `npm test && npm run typecheck`
-Expected: PASS — 5 testes de guards, nenhum erro de tipo.
+Run: `npm test && npm run typecheck && npm run build`
+Expected: PASS — testes de guards e de rota pública passando, nenhum erro de tipo, build concluído (o build é o que prova que o `proxy.ts` compila sob o Next 16).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add -A
