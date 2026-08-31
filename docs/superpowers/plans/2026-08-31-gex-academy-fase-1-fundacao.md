@@ -1126,7 +1126,7 @@ git commit -m "feat(access): regra de acesso a cursos como funcao pura testada"
   - `createBrowserSupabase(): SupabaseClient<Database>` em `src/lib/supabase/client.ts`
   - `createAdminSupabase(): SupabaseClient<Database>` em `src/lib/supabase/admin.ts`
   - `type CurrentUser = AccessUser & { fullName: string; email: string; avatarUrl: string | null }`
-  - `getCurrentUser(): Promise<CurrentUser | null>` e `requireUser(): Promise<CurrentUser>` em `src/lib/auth/session.ts`
+  - `getCurrentUser(): Promise<CurrentUser | null>` em `src/lib/auth/session.ts`
   - `assertRole(user: CurrentUser | null, roles: Role[]): CurrentUser` em `src/lib/auth/guards.ts`
   - `type ActionResult<T>`, `ok()`, `fail()` em `src/server/result.ts`
 
