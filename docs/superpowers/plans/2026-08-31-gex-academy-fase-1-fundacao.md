@@ -295,23 +295,46 @@ Este projeto usa um **projeto Supabase de desenvolvimento na nuvem**, não o
 Supabase local — a máquina não tem Docker. Todos os comandos de banco falam com
 esse projeto remoto.
 
-```bash
-npx supabase init
-npx supabase link --project-ref <ref-do-projeto>
+O `.env.local` **já está preenchido e validado** contra o projeto de
+desenvolvimento (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`), e
+`npx supabase init` já foi executado — `supabase/config.toml` existe.
+
+Não use `supabase link`: ele exige um access token da plataforma, obtido por
+login interativo no navegador. Todos os comandos de banco usam `--db-url`, que
+autentica direto no Postgres com a senha do banco.
+
+Crie `scripts/db.mjs`, que monta a URL a partir do `.env.local` e repassa os
+argumentos para a Supabase CLI:
+
+```javascript
+#!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
+
+// Node 20.12+ lê o arquivo de ambiente nativamente.
+process.loadEnvFile('.env.local')
+
+const ref = process.env.SUPABASE_PROJECT_REF
+const senha = process.env.SUPABASE_DB_PASSWORD
+
+if (!ref || !senha) {
+  console.error(
+    'Faltam SUPABASE_PROJECT_REF e/ou SUPABASE_DB_PASSWORD no .env.local.\n' +
+      'Eles estão no painel do Supabase, em Project Settings → Database.',
+  )
+  process.exit(1)
+}
+
+// encodeURIComponent é obrigatório: senhas do Supabase costumam ter !, * e @,
+// que quebram a connection string se entrarem cruas.
+const dbUrl = `postgresql://postgres:${encodeURIComponent(senha)}@db.${ref}.supabase.co:5432/postgres`
+
+const { status } = spawnSync('npx', ['supabase', ...process.argv.slice(2), '--db-url', dbUrl], {
+  stdio: 'inherit',
+})
+
+process.exit(status ?? 1)
 ```
-
-O `link` pede a senha do banco, que está em *Project Settings → Database* no
-painel do Supabase.
-
-Copie `.env.local.example` para `.env.local` e preencha com os valores de
-*Project Settings → API*:
-
-- `NEXT_PUBLIC_SUPABASE_URL` — a *Project URL* (`https://<ref>.supabase.co`)
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — a chave pública (rotulada
-  `anon` ou `publishable`, conforme a versão do painel)
-- `SUPABASE_SERVICE_ROLE_KEY` — a chave `service_role`
-
-`.env.local` está no `.gitignore` e **nunca** é commitado.
 
 - [ ] **Step 2: Escrever a migration com o schema completo**
 
@@ -563,17 +586,31 @@ A Task 1 registrou os scripts assumindo Supabase local. Substitua-os em
 
 ```json
 {
-  "db:push": "supabase db push",
-  "db:reset": "supabase db reset --linked",
-  "db:types": "supabase gen types typescript --linked > src/lib/supabase/database.types.ts"
+  "db:push": "node scripts/db.mjs db push --yes",
+  "db:reset": "node scripts/db.mjs db reset --yes",
+  "db:types": "node scripts/db.mjs gen types typescript > src/lib/supabase/database.types.ts"
 }
 ```
 
 Remova `db:start` e `db:stop` — não existe instância local para subir ou parar.
 
+Flags verificados nesta versão da CLI: `db push`, `db reset` e `gen types` todos
+aceitam `--db-url` (que exige a senha percent-encoded, e é o que `scripts/db.mjs`
+faz), e `--yes` dispensa a confirmação interativa. Se `gen types typescript` for
+recusado como subcomando, use `gen types --lang=typescript` — a CLI aceita as
+duas formas conforme a versão.
+
 ⚠️ `db:reset` **apaga e recria o banco remoto a partir das migrations**. É o
-comportamento desejado num projeto de desenvolvimento, e é o que dá testes
-repetíveis. Nunca rode esse script contra o projeto de produção.
+comportamento desejado neste projeto de desenvolvimento, e é o que dá testes
+repetíveis. Nunca aponte esse script para o projeto de produção.
+
+Confirme que `db:types` gerou TypeScript válido, sem log da CLI misturado:
+`head -5 src/lib/supabase/database.types.ts` deve começar com `export type Json =`,
+e `npm run typecheck` deve passar. Se houver log no arquivo, ajuste
+`scripts/db.mjs` para capturar o stdout do filho e escrever só ele.
+
+Ainda assim, escreva todo teste de integração para ser re-executável sem reset —
+todos geram slugs e e-mails únicos com `Date.now()`. Mantenha essa disciplina.
 
 - [ ] **Step 4: Aplicar a migration e gerar os tipos**
 
@@ -582,7 +619,7 @@ npm run db:push
 npm run db:types
 ```
 
-Expected: a migration aplica sem erro e `src/lib/supabase/database.types.ts` passa a existir com o tipo `Database`.
+Expected: `db push` aplica `0001_schema_inicial.sql` sem erro, e `src/lib/supabase/database.types.ts` passa a existir com o tipo `Database`.
 
 - [ ] **Step 5: Criar os utilitários de teste de banco**
 
@@ -771,7 +808,7 @@ A prova de que o RLS está de fato barrando quem não tem sessão entra na Task 
 - [ ] **Step 7: Rodar os testes de banco e confirmar que passam**
 
 Run: `npm run test:db`
-Expected: PASS — 5 testes. Se algum falhar por restrição ausente, corrija `0001_schema_inicial.sql`, rode `npm run db:reset` e repita.
+Expected: PASS — 5 testes. Se algum falhar por restrição ausente, corrija `0001_schema_inicial.sql` e rode `npm run db:reset` (que reaplica a migration corrigida do zero), depois repita.
 
 - [ ] **Step 8: Commit**
 
