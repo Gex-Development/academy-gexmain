@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
 
+const SENHA_DE_TESTE = 'senha-de-teste-123'
+
 /** Cliente com service_role: ignora RLS. Uso exclusivo de testes e seeds. */
 export function adminClient() {
   return createClient<Database>(
@@ -21,7 +23,7 @@ export async function createTestUser(input: {
   const db = adminClient()
   const { data, error } = await db.auth.admin.createUser({
     email: input.email,
-    password: 'senha-de-teste-123',
+    password: SENHA_DE_TESTE,
     email_confirm: true,
   })
   if (error || !data.user) throw error ?? new Error('usuário não criado')
@@ -37,4 +39,20 @@ export async function createTestUser(input: {
   if (profileError) throw profileError
 
   return data.user.id
+}
+
+/**
+ * Cliente autenticado como o usuário de teste indicado, com a chave publicável
+ * (não a service_role): é o único jeito de exercitar RLS de verdade — um
+ * cliente com service_role ignora as políticas por completo.
+ */
+export async function authClient(email: string, password = SENHA_DE_TESTE) {
+  const client = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  )
+  const { error } = await client.auth.signInWithPassword({ email, password })
+  if (error) throw error
+  return client
 }

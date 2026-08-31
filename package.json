@@ -14,7 +14,7 @@
     "test:e2e": "playwright test",
     "db:push": "node scripts/db.mjs db push --yes",
     "db:reset": "node scripts/db.mjs db reset --yes",
-    "db:types": "node scripts/db.mjs gen types typescript > src/lib/supabase/database.types.ts"
+    "db:types": "node scripts/db.mjs gen types typescript --out src/lib/supabase/database.types.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

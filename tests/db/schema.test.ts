@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { adminClient, createTestUser } from './client'
+import { adminClient, authClient, createTestUser } from './client'
 
 const db = adminClient()
 let areaId: string
@@ -110,5 +110,55 @@ describe('restrições do schema', () => {
       body: 'x'.repeat(4001),
     })
     expect(error?.message).toContain('questions_body_check')
+  })
+})
+
+// Diferente dos testes acima (todos com service_role, que ignora RLS por
+// completo), este usa um cliente autenticado como a própria pessoa convidada
+// — é o único jeito de provar que a política `profiles_ativa_a_si` de fato
+// barra a auto-promoção, e não só que o service_role consegue gravar.
+describe('RLS: ativação da própria conta (profiles_ativa_a_si)', () => {
+  it('recusa ativação que também muda role, area_id ou email; permite ativação simples', async () => {
+    const stamp = Date.now()
+    const email = `convidado-${stamp}@gexcorp.com.br`
+    const userId = await createTestUser({
+      email,
+      fullName: 'Convidado de Teste',
+      role: 'member',
+      status: 'invited',
+    })
+
+    const asInvitedUser = await authClient(email)
+
+    const tentativaDeEscalada = await asInvitedUser
+      .from('profiles')
+      .update({ status: 'active', role: 'admin' })
+      .eq('id', userId)
+    expect(tentativaDeEscalada.error).not.toBeNull()
+
+    // WITH CHECK falhando derruba o UPDATE inteiro: a linha continua intocada.
+    const { data: aindaConvidado, error: leituraError } = await adminClient()
+      .from('profiles')
+      .select('status, role')
+      .eq('id', userId)
+      .single()
+    if (leituraError) throw leituraError
+    expect(aindaConvidado?.status).toBe('invited')
+    expect(aindaConvidado?.role).toBe('member')
+
+    const ativacaoSimples = await asInvitedUser
+      .from('profiles')
+      .update({ status: 'active' })
+      .eq('id', userId)
+    expect(ativacaoSimples.error).toBeNull()
+
+    const { data: agoraAtivo, error: leituraFinalError } = await adminClient()
+      .from('profiles')
+      .select('status, role')
+      .eq('id', userId)
+      .single()
+    if (leituraFinalError) throw leituraFinalError
+    expect(agoraAtivo?.status).toBe('active')
+    expect(agoraAtivo?.role).toBe('member')
   })
 })

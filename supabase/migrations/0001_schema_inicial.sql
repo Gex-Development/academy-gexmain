@@ -229,8 +229,16 @@ create policy profiles_admin_escreve on public.profiles
   for update to authenticated
   using (public.auth_profile_role() = 'admin' and public.auth_is_active())
   with check (public.auth_profile_role() = 'admin' and public.auth_is_active());
--- A pessoa só pode ativar a própria conta, vinda do convite. Nada além disso.
+-- A pessoa só pode ativar a própria conta, vinda do convite.
+-- O WITH CHECK fixa papel, área e e-mail nos valores atuais: sem isso, qualquer
+-- usuário `invited` viraria admin na mesma UPDATE que ativa a conta.
 create policy profiles_ativa_a_si on public.profiles
   for update to authenticated
   using (id = auth.uid() and status = 'invited')
-  with check (id = auth.uid() and status = 'active');
+  with check (
+    id = auth.uid()
+    and status = 'active'
+    and role = public.auth_profile_role()
+    and area_id is not distinct from public.auth_profile_area()
+    and email = (select p.email from public.profiles p where p.id = auth.uid())
+  );
