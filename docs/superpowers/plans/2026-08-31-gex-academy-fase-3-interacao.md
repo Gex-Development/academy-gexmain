@@ -2719,21 +2719,25 @@ colaboradores; todo colaborador novo começa pela trilha inicial da empresa.
 
 ## Rodando localmente
 
-Pré-requisitos: Node 20+, Docker (para o Supabase local) e a Supabase CLI.
+Pré-requisitos: Node 20+ e a Supabase CLI. O desenvolvimento usa um projeto
+Supabase **de desenvolvimento na nuvem** — não há Supabase local.
 
 ```bash
 npm install
-npm run db:start          # sobe o Supabase local e imprime as chaves
+npx supabase link --project-ref <ref-do-projeto-de-desenvolvimento>
 cp .env.local.example .env.local
-# preencha .env.local com os valores impressos pelo db:start
-npm run db:reset          # aplica as migrations
+# preencha com Project URL, chave publicável e service_role (Project Settings → API)
+npm run db:push           # aplica as migrations no projeto ligado
 npm run db:types          # gera os tipos do banco
 npm run dev
 ```
 
-Crie o primeiro admin pelo Studio local (http://127.0.0.1:54323): adicione um
-usuário em Authentication e depois uma linha em `profiles` com `role = 'admin'`
-e `status = 'active'`.
+Crie o primeiro admin pelo painel do Supabase: adicione um usuário em
+Authentication e depois uma linha em `profiles` com `role = 'admin'` e
+`status = 'active'`.
+
+⚠️ `npm run db:reset` apaga e recria o banco **remoto** a partir das migrations.
+Use apenas contra o projeto de desenvolvimento, nunca contra produção.
 
 ## Comandos
 
@@ -2741,10 +2745,11 @@ e `status = 'active'`.
 |---|---|
 | `npm run dev` | Servidor de desenvolvimento |
 | `npm test` | Testes unitários (Vitest) |
-| `npm run test:db` | Testes de integração com o banco — exige o Supabase local |
+| `npm run test:db` | Testes de integração — falam com o projeto de desenvolvimento |
 | `npm run test:e2e` | Testes de ponta a ponta (Playwright) |
 | `npm run typecheck` | Verificação de tipos |
-| `npm run db:reset` | Recria o banco local aplicando todas as migrations |
+| `npm run db:push` | Aplica as migrations pendentes no projeto ligado |
+| `npm run db:reset` | Recria o banco de desenvolvimento do zero — **destrutivo** |
 | `npm run db:types` | Regenera `src/lib/supabase/database.types.ts` |
 
 ## Onde as coisas moram

@@ -42,7 +42,7 @@ Estas regras valem para **todas** as tarefas deste plano e dos planos das fases 
 
 **Interfaces:**
 - Consumes: nada (primeira tarefa).
-- Produces: `formatDuration(seconds: number | null): string` em `src/lib/format.ts`. Scripts npm `test`, `test:db`, `test:e2e`, `db:start`, `db:reset`, `db:types`.
+- Produces: `formatDuration(seconds: number | null): string` em `src/lib/format.ts`. Scripts npm `test`, `test:db`, `test:e2e` e os de banco (a Task 2 os reaponta para o projeto Supabase remoto).
 
 - [ ] **Step 1: Criar o app Next.js na raiz do repositório**
 
@@ -289,14 +289,29 @@ git commit -m "chore: scaffold do Next 16 com Vitest, Playwright e helper de dur
 - Consumes: scripts npm da Task 1.
 - Produces: todas as tabelas do MVP; o tipo `Database` exportado de `src/lib/supabase/database.types.ts`; o helper de teste `adminClient()` em `tests/db/client.ts`.
 
-- [ ] **Step 1: Inicializar o Supabase local**
+- [ ] **Step 1: Inicializar o Supabase e ligar ao projeto de desenvolvimento**
+
+Este projeto usa um **projeto Supabase de desenvolvimento na nuvem**, não o
+Supabase local — a máquina não tem Docker. Todos os comandos de banco falam com
+esse projeto remoto.
 
 ```bash
 npx supabase init
-npx supabase start
+npx supabase link --project-ref <ref-do-projeto>
 ```
 
-O comando `start` imprime a `API URL`, a chave pública (rotulada `anon key` ou `publishable key`, conforme a versão da CLI) e a `service_role key`. Copie `.env.local.example` para `.env.local` e preencha `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SERVICE_ROLE_KEY` com esses valores.
+O `link` pede a senha do banco, que está em *Project Settings → Database* no
+painel do Supabase.
+
+Copie `.env.local.example` para `.env.local` e preencha com os valores de
+*Project Settings → API*:
+
+- `NEXT_PUBLIC_SUPABASE_URL` — a *Project URL* (`https://<ref>.supabase.co`)
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — a chave pública (rotulada
+  `anon` ou `publishable`, conforme a versão do painel)
+- `SUPABASE_SERVICE_ROLE_KEY` — a chave `service_role`
+
+`.env.local` está no `.gitignore` e **nunca** é commitado.
 
 - [ ] **Step 2: Escrever a migration com o schema completo**
 
@@ -541,16 +556,35 @@ create policy profiles_ativa_a_si on public.profiles
   with check (id = auth.uid() and status = 'active');
 ```
 
-- [ ] **Step 3: Aplicar a migration e gerar os tipos**
+- [ ] **Step 3: Apontar os scripts de banco para o projeto remoto**
+
+A Task 1 registrou os scripts assumindo Supabase local. Substitua-os em
+`package.json` pelas versões que falam com o projeto ligado:
+
+```json
+{
+  "db:push": "supabase db push",
+  "db:reset": "supabase db reset --linked",
+  "db:types": "supabase gen types typescript --linked > src/lib/supabase/database.types.ts"
+}
+```
+
+Remova `db:start` e `db:stop` — não existe instância local para subir ou parar.
+
+⚠️ `db:reset` **apaga e recria o banco remoto a partir das migrations**. É o
+comportamento desejado num projeto de desenvolvimento, e é o que dá testes
+repetíveis. Nunca rode esse script contra o projeto de produção.
+
+- [ ] **Step 4: Aplicar a migration e gerar os tipos**
 
 ```bash
-npm run db:reset
+npm run db:push
 npm run db:types
 ```
 
 Expected: a migration aplica sem erro e `src/lib/supabase/database.types.ts` passa a existir com o tipo `Database`.
 
-- [ ] **Step 4: Criar os utilitários de teste de banco**
+- [ ] **Step 5: Criar os utilitários de teste de banco**
 
 Crie `tests/db/setup.ts`:
 
@@ -563,7 +597,7 @@ const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(
-      `${key} ausente. Rode "npm run db:start" e preencha o .env.local antes de "npm run test:db".`,
+      `${key} ausente. Preencha o .env.local com as credenciais do projeto Supabase de desenvolvimento antes de rodar "npm run test:db".`,
     )
   }
 }
@@ -614,7 +648,7 @@ export async function createTestUser(input: {
 }
 ```
 
-- [ ] **Step 5: Escrever os testes que falham para as restrições do schema**
+- [ ] **Step 6: Escrever os testes que falham para as restrições do schema**
 
 Crie `tests/db/schema.test.ts`:
 
@@ -734,12 +768,12 @@ describe('restrições do schema', () => {
 
 A prova de que o RLS está de fato barrando quem não tem sessão entra na Task 6, com um cliente anônimo. Aqui o foco são as restrições de integridade.
 
-- [ ] **Step 6: Rodar os testes de banco e confirmar que passam**
+- [ ] **Step 7: Rodar os testes de banco e confirmar que passam**
 
 Run: `npm run test:db`
 Expected: PASS — 5 testes. Se algum falhar por restrição ausente, corrija `0001_schema_inicial.sql`, rode `npm run db:reset` e repita.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -3183,7 +3217,7 @@ export default function NotFound() {
 Aplique a migration:
 
 ```bash
-npm run db:reset
+npm run db:push
 ```
 
 - [ ] **Step 7: Escrever o teste E2E do primeiro acesso**
@@ -3399,7 +3433,7 @@ npm run build
 npm run test:e2e
 ```
 
-Expected: PASS em todas as etapas. Os testes E2E precisam do Supabase local rodando (`npm run db:start`).
+Expected: PASS em todas as etapas. Os testes E2E falam com o projeto Supabase de desenvolvimento, então `.env.local` precisa estar preenchido.
 
 - [ ] **Step 9: Commit**
 

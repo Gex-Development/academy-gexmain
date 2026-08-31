@@ -2964,7 +2964,7 @@ create policy anexos_storage_escrita on storage.objects
 - [ ] **Step 2: Aplicar e regenerar os tipos**
 
 ```bash
-npm run db:reset
+npm run db:push
 npm run db:types
 ```
 
