@@ -2693,6 +2693,14 @@ git commit -m "feat(admin): convite de pessoas com papel e area, com guardas con
   - Rota `GET /auth/confirm` que troca o token do e-mail por sessão.
   - Helper de teste `criarUsuarioDeTeste()` em `e2e/helpers.ts`.
 
+> **Cota de e-mail.** O convite usa o SMTP embutido do Supabase, que num projeto
+> de desenvolvimento envia poucos e-mails por hora. Rodar a suíte E2E repetidas
+> vezes na mesma hora esgota a cota e faz o teste de convite falhar por um motivo
+> que nada tem a ver com o código. Rode a suíte completa uma vez por sessão, ou
+> configure SMTP próprio (Resend) em *Authentication → SMTP Settings* — o mesmo
+> Resend que a fase 3 usa para os e-mails transacionais, o que remove o limite de
+> vez.
+
 - [ ] **Step 1: Criar a rota de confirmação de token**
 
 Crie `src/app/auth/confirm/route.ts`:
@@ -3487,6 +3495,22 @@ test('admin convida pessoa e ela aparece na lista como convite pendente', async 
   await page.getByLabel('Papel').selectOption('member')
   await page.getByLabel('Área').selectOption({ index: 1 })
   await page.getByRole('button', { name: 'Enviar convite' }).click()
+
+  // O convite passa pelo SMTP embutido do Supabase, limitado a poucos e-mails
+  // por hora num projeto de desenvolvimento. Quando a cota estoura, a action
+  // devolve a mensagem genérica de erro — e o teste falharia com um
+  // "elemento não encontrado" que não diz nada. Espere pelos dois resultados
+  // possíveis e transforme o erro num diagnóstico.
+  await expect(page.getByText('Convite enviado.').or(page.getByRole('alert'))).toBeVisible()
+
+  const alerta = page.getByRole('alert')
+  if (await alerta.count()) {
+    throw new Error(
+      `O convite falhou: "${await alerta.first().textContent()}". ` +
+        'Se for limite de e-mail do Supabase, espere uma hora ou configure SMTP ' +
+        'próprio em Authentication → SMTP Settings.',
+    )
+  }
 
   await expect(page.getByText('Convite enviado.')).toBeVisible()
   await expect(page.getByText(emailConvidado)).toBeVisible()
