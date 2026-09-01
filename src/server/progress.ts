@@ -2,22 +2,68 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { canAccessCourse } from '@/lib/access'
 import { getCurrentUser } from '@/lib/auth/session'
+import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { ok, toActionError, type ActionResult } from './result'
 import { getCourseView } from './viewer'
 
-/** Ids das aulas que a pessoa já concluiu dentro de um curso. */
+/**
+ * Ids das aulas que a pessoa já concluiu dentro de um curso.
+ *
+ * Verifica o acesso por conta própria, e não confia em quem chamou: este
+ * arquivo é 'use server', então cada export é um endpoint que qualquer pessoa
+ * logada pode invocar com o id de curso que quiser (mesmo raciocínio do
+ * comentário em listAttachments, src/server/attachments.ts). O embed
+ * `lessons!inner(course_id)` já herda a RLS de `lessons_leitura` — mas isso
+ * barra a LEITURA de aula alheia, não confirma que o `courseId` recebido é
+ * sequer um curso de verdade nem responde "a pessoa acessa este curso" antes
+ * de gastar a consulta; a checagem aqui é a mesma dupla camada usada em todo
+ * outro endpoint do projeto: valida a forma do id, resolve o curso com o
+ * cliente admin (para enxergar rascunho também, do jeito que canAccessCourse
+ * precisa decidir), e só consulta o progresso se o nível de acesso não for
+ * 'none'.
+ */
 export async function getCompletedLessonIds(courseId: string): Promise<Set<string>> {
   const user = await getCurrentUser()
-  if (!user) return new Set()
+  if (!user || user.status !== 'active') return new Set()
+
+  const idValido = z.string().uuid().safeParse(courseId)
+  if (!idValido.success) return new Set()
+
+  const admin = createAdminSupabase()
+  const { data: curso } = await admin
+    .from('courses')
+    .select('id, area_id, status, is_onboarding')
+    .eq('id', idValido.data)
+    .maybeSingle()
+  if (!curso) return new Set()
+
+  const supabaseUsuario = await createServerSupabase()
+  const { data: liberacoes } = await supabaseUsuario
+    .from('course_access')
+    .select('course_id')
+    .eq('user_id', user.id)
+
+  const nivel = canAccessCourse(
+    user,
+    {
+      id: curso.id,
+      areaId: curso.area_id,
+      status: curso.status as 'draft' | 'published',
+      isOnboarding: curso.is_onboarding,
+    },
+    new Set((liberacoes ?? []).map((l) => l.course_id)),
+  )
+  if (nivel === 'none') return new Set()
 
   const supabase = await createServerSupabase()
   const { data } = await supabase
     .from('lesson_progress')
     .select('lesson_id, lessons!inner(course_id)')
     .eq('user_id', user.id)
-    .eq('lessons.course_id', courseId)
+    .eq('lessons.course_id', idValido.data)
 
   return new Set((data ?? []).map((row) => row.lesson_id))
 }
