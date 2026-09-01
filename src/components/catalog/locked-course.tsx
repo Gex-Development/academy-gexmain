@@ -8,10 +8,21 @@ export function LockedCourse({
   course: CourseView
   requestStatus: 'none' | 'pending'
 }) {
+  // Mesma cadeia de três degraus de area-card.tsx (item 3 da revisão de
+  // branch) — aqui o buraco era pior que em course-card.tsx: o cartão que
+  // envolve a capa usa bg-superficie, que no escuro é #221f20, o MESMO
+  // valor de --color-capa-fundo. Sem o terceiro degrau, a área da capa
+  // ficava 1,00:1 contra o próprio contêiner — literalmente a mesma cor,
+  // distinguível só pela borda de 1px. from-azul/to-ciano quebra esse
+  // empate porque nenhum dos dois é igual a bg-superficie em tema nenhum.
+  const semReserva = !course.coverUrl && !course.areaColor
+
   return (
     <div className="mx-auto max-w-lg rounded-card border border-borda bg-superficie p-8 text-center">
       <div
-        className="aspect-video w-full overflow-hidden rounded-card border border-borda bg-capa-fundo"
+        className={`aspect-video w-full overflow-hidden rounded-card border border-borda ${
+          semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
+        }`}
         style={course.areaColor && !course.coverUrl ? { backgroundColor: course.areaColor } : undefined}
       >
         {course.coverUrl && (

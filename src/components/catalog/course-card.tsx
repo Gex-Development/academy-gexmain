@@ -4,10 +4,21 @@ import type { CatalogItem } from '@/server/catalog'
 
 export function CourseCard({ item }: { item: CatalogItem }) {
   const bloqueado = item.access === 'none'
+  // Mesma cadeia de três degraus de area-card.tsx (item 3 da revisão de
+  // branch): imagem → cor da área → gradiente da marca. Sem o terceiro
+  // degrau, um curso sem capa E sem cor de área (herdada da própria área)
+  // caía no bg-capa-fundo chapado — #221f20 sozinho contra o #131213 do
+  // fundo da página dá 1,14:1, o mesmo defeito que o item 3 corrigiu em
+  // area-card.tsx mas que ficou de fora aqui por um artefato de ordem: este
+  // arquivo copiou a forma de area-card.tsx ANTES do item 3 acrescentar o
+  // gradiente.
+  const semReserva = !item.coverUrl && !item.areaColor
 
   const capa = (
     <div
-      className="relative aspect-video w-full overflow-hidden rounded-card border border-borda bg-capa-fundo"
+      className={`relative aspect-video w-full overflow-hidden rounded-card border border-borda ${
+        semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
+      }`}
       style={item.areaColor && !item.coverUrl ? { backgroundColor: item.areaColor } : undefined}
     >
       {item.coverUrl && (
