@@ -166,6 +166,20 @@ test('aluno pergunta, líder responde com selo de professor, aluno conclui a aul
 
     await expect(page.getByText('Usamos Alcance para topo de funil.')).toBeVisible()
     await expect(page.getByText('Professor').first()).toBeVisible()
+
+    await sair(page)
+
+    // A aluna volta à aula e vê a resposta pela PRÓPRIA sessão — não basta o
+    // líder (autor e leitor ao mesmo tempo) enxergar o que ele mesmo
+    // publicou. isInstructor é calculado por autor, não por quem está vendo
+    // (src/server/forum-query.ts), e o RLS está ligado em toda tabela do
+    // fórum: se uma política de leitura um dia for apertada por engano para
+    // "só o autor lê", a asserção acima continuaria passando mesmo com a
+    // aluna sem acesso nenhum à resposta.
+    await entrar(page, emailAluno)
+    await page.goto(`/curso/${slugCurso}/aula/objetivo`)
+    await expect(page.getByText('Usamos Alcance para topo de funil.')).toBeVisible()
+    await expect(page.getByText('Professor').first()).toBeVisible()
   } finally {
     await limpar(fixtures)
   }
