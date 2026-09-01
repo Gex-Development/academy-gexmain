@@ -11,8 +11,8 @@ export function LockedCourse({
   return (
     <div className="mx-auto max-w-lg rounded-card border border-borda bg-superficie p-8 text-center">
       <div
-        className="aspect-video w-full overflow-hidden rounded-card border border-borda bg-fundo"
-        style={course.coverUrl ? undefined : { backgroundColor: course.areaColor ?? '#e3e6ea' }}
+        className="aspect-video w-full overflow-hidden rounded-card border border-borda bg-capa-fundo"
+        style={course.areaColor && !course.coverUrl ? { backgroundColor: course.areaColor } : undefined}
       >
         {course.coverUrl && (
           // Capa é URL externa informada pelo líder; next/image exigiria allowlist de domínio.

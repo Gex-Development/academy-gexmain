@@ -7,8 +7,8 @@ export function CourseCard({ item }: { item: CatalogItem }) {
 
   const capa = (
     <div
-      className="relative aspect-video w-full overflow-hidden rounded-card border border-borda bg-fundo"
-      style={item.coverUrl ? undefined : { backgroundColor: item.areaColor ?? '#e3e6ea' }}
+      className="relative aspect-video w-full overflow-hidden rounded-card border border-borda bg-capa-fundo"
+      style={item.areaColor && !item.coverUrl ? { backgroundColor: item.areaColor } : undefined}
     >
       {item.coverUrl && (
         // Capa é URL externa informada pelo líder; next/image exigiria allowlist de domínio.
