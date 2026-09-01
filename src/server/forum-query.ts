@@ -34,12 +34,22 @@ export function podeGerenciarArea(
 }
 
 export type ForumAuthor = { id: string; name: string; isInstructor: boolean }
+// `canDelete`, não `canEdit`: não existe editQuestion nem editAnswer no
+// projeto — este campo só decide se o botão "Excluir" aparece
+// (question-item.tsx). O RLS de edição existe desde a 0006
+// (perguntas_edita/respostas_edita), mas a edição prometida pelo spec
+// (§10, "Cada pessoa edita e apaga o que é seu") não foi construída nesta
+// fase. A regra difere entre pergunta e resposta por desenho, não por
+// descuido — pergunta: só o autor (`author_id === userId`, abaixo);
+// resposta: autor OU quem modera (`author_id === userId || podeModerar`,
+// em paraForumQuestion) — e essa assimetria é conhecida e deliberada, não
+// deve ser "corrigida" para as duas baterem.
 export type ForumAnswer = {
   id: string
   body: string
   createdAt: string
   author: ForumAuthor
-  canEdit: boolean
+  canDelete: boolean
 }
 export type ForumQuestion = {
   id: string
@@ -49,7 +59,7 @@ export type ForumQuestion = {
   resolved: boolean
   author: ForumAuthor
   answers: ForumAnswer[]
-  canEdit: boolean
+  canDelete: boolean
   canModerate: boolean
 }
 
@@ -136,7 +146,7 @@ export function paraForumQuestion(
     isPinned: row.is_pinned,
     resolved: row.resolved_at !== null,
     author: paraForumAuthor(row.author_id, perfis, areaIdDoCurso),
-    canEdit: row.author_id === userId,
+    canDelete: row.author_id === userId,
     canModerate: podeModerar,
     answers: [...row.answers]
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -145,7 +155,7 @@ export function paraForumQuestion(
         body: a.body,
         createdAt: a.created_at,
         author: paraForumAuthor(a.author_id, perfis, areaIdDoCurso),
-        canEdit: a.author_id === userId || podeModerar,
+        canDelete: a.author_id === userId || podeModerar,
       })),
   }
 }

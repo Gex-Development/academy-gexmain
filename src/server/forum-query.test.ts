@@ -65,7 +65,7 @@ function perfis(entradas: Record<string, PerfilAutor>): Map<string, PerfilAutor>
 
 const COLEGA_1: PerfilAutor = { full_name: 'Colega Um', role: 'member', area_id: AREA_TRAFEGO, status: 'active' }
 
-describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linha do banco', () => {
+describe('paraForumQuestion — selo, canDelete e canModerate a partir de uma linha do banco', () => {
   it('autor admin ganha o selo "Professor", mesmo fora da área do curso', () => {
     const pergunta = paraForumQuestion(
       linha({ author_id: 'admin-1' }),
@@ -134,10 +134,10 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
     expect(pergunta.author.isInstructor).toBe(false)
   })
 
-  it('canEdit é true só para quem fez a pergunta', () => {
+  it('canDelete é true só para quem fez a pergunta', () => {
     const p = perfis({ 'colega-1': COLEGA_1 })
-    expect(paraForumQuestion(linha(), 'colega-1', false, AREA_TRAFEGO, p).canEdit).toBe(true)
-    expect(paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO, p).canEdit).toBe(false)
+    expect(paraForumQuestion(linha(), 'colega-1', false, AREA_TRAFEGO, p).canDelete).toBe(true)
+    expect(paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO, p).canDelete).toBe(false)
   })
 
   it('canModerate reflete o parâmetro recebido, igual para toda pergunta da lista', () => {
@@ -175,7 +175,7 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
     expect(pergunta.answers.map((a) => a.id)).toEqual(['a1', 'a2'])
   })
 
-  it('canEdit de uma resposta: verdadeiro para o autor OU para quem modera, nunca para um terceiro', () => {
+  it('canDelete de uma resposta: verdadeiro para o autor OU para quem modera, nunca para um terceiro', () => {
     const respostaDe = (autorId: string) => ({
       id: 'a1',
       body: 'Resp',
@@ -188,7 +188,7 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
     })
 
     const comoAutor = paraForumQuestion(linha({ answers: [respostaDe('resp-1')] }), 'resp-1', false, AREA_TRAFEGO, p)
-    expect(comoAutor.answers[0]!.canEdit).toBe(true)
+    expect(comoAutor.answers[0]!.canDelete).toBe(true)
 
     const comoModerador = paraForumQuestion(
       linha({ answers: [respostaDe('resp-1')] }),
@@ -197,7 +197,7 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       AREA_TRAFEGO,
       p,
     )
-    expect(comoModerador.answers[0]!.canEdit).toBe(true)
+    expect(comoModerador.answers[0]!.canDelete).toBe(true)
 
     const comoTerceiro = paraForumQuestion(
       linha({ answers: [respostaDe('resp-1')] }),
@@ -206,7 +206,7 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       AREA_TRAFEGO,
       p,
     )
-    expect(comoTerceiro.answers[0]!.canEdit).toBe(false)
+    expect(comoTerceiro.answers[0]!.canDelete).toBe(false)
   })
 })
 

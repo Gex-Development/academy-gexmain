@@ -347,7 +347,7 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS, pelo cliente da 
     const perfis = await buscarPerfis(linha)
     const pergunta = paraForumQuestion(linha, memberTrafegoId, false, areaTrafego, perfis)
     expect(pergunta.author.isInstructor).toBe(false)
-    expect(pergunta.canEdit).toBe(true)
+    expect(pergunta.canDelete).toBe(true)
     expect(pergunta.canModerate).toBe(false)
   })
 

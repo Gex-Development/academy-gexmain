@@ -77,7 +77,7 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
               </form>
             </>
           )}
-          {(question.canEdit || question.canModerate) && (
+          {(question.canDelete || question.canModerate) && (
             <form
               action={deleteQuestionAction}
               onSubmit={(e) => {
@@ -111,7 +111,7 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
                 </p>
                 <p className="mt-1 whitespace-pre-line text-sm">{answer.body}</p>
               </div>
-              {answer.canEdit && (
+              {answer.canDelete && (
                 <form action={deleteAnswerAction}>
                   <input type="hidden" name="answerId" value={answer.id} />
                   <Button type="submit" variant="secundario" className="px-2 py-0.5 text-xs">
