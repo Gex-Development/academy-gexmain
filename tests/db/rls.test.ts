@@ -156,24 +156,32 @@ describe('RLS — a vitrine mostra, o conteúdo não', () => {
     expect(data).toEqual([])
   })
 
-  // A política lessons_leitura tem uma terceira cláusula, sem can_access_course,
-  // só para deixar a vitrine CONTAR aulas publicadas de cursos bloqueados (ver
-  // comentário na migration). Efeito colateral: ela libera a LINHA inteira, não
-  // só um resumo — RLS não distingue coluna. video_ref é uma coluna comum, então
-  // fica de pé junto. A aplicação nunca pede essa coluna fora do editor (ver
-  // server/catalog.ts, que só seleciona `lessons(id, status)`), mas nada no
-  // banco impede um cliente autenticado de pedir mais. Este teste documenta o
-  // comportamento atual — combinado com o teste seguinte (anexo, que exige
-  // acesso "sem exceção"), prova que a linha da AULA vaza mas o ANEXO não.
-  it('aula publicada expõe a linha inteira (inclusive video_ref) mesmo sem acesso ao curso', async () => {
+  // Corrigido em 0004_corrige_leitura_de_aulas.sql: lessons_leitura tinha uma
+  // terceira cláusula, sem can_access_course, só para deixar a vitrine CONTAR
+  // aulas publicadas de cursos bloqueados. RLS não distingue coluna — a
+  // cláusula liberava a LINHA inteira, video_ref incluído, e para um vídeo do
+  // YouTube não listado o ref É o acesso (spec §8). Este teste prova que a
+  // linha não vaza mais.
+  it('designer NÃO enxerga a linha da aula do curso de tráfego', async () => {
     const cliente = await authClient(emailDesigner)
     const { data, error } = await cliente
       .from('lessons')
       .select('id, status, video_ref')
       .eq('id', aulaTrafego)
     expect(error).toBeNull()
-    expect(data).toHaveLength(1)
-    expect(data![0]?.video_ref).toBe('dQw4w9WgXcQ')
+    expect(data).toEqual([])
+  })
+
+  // A vitrine ainda precisa mostrar "N aulas" em curso bloqueado (spec §6). A
+  // função contar_aulas_publicadas() resolve isso sem expor a linha: devolve
+  // só a contagem por curso, chamável por quem quer que seja — inclusive por
+  // quem, como o designer aqui, não enxerga uma linha sequer de `lessons`.
+  it('mesmo sem acesso, designer lê a contagem de aulas publicadas via RPC — sem ver a linha', async () => {
+    const cliente = await authClient(emailDesigner)
+    const { data, error } = await cliente.rpc('contar_aulas_publicadas')
+    expect(error).toBeNull()
+    const linhaDoCurso = data?.find((r) => r.course_id === cursoTrafego)
+    expect(linhaDoCurso?.total).toBe(1)
   })
 
   it('designer NÃO enxerga o fórum do curso de tráfego', async () => {
@@ -205,6 +213,21 @@ describe('RLS — a vitrine mostra, o conteúdo não', () => {
 
     const { data } = await cliente.from('lesson_attachments').select('id').eq('lesson_id', aulaTrafego)
     expect(data).toHaveLength(1)
+  })
+
+  // Controle da correção acima: com a mesma liberação individual (inserida no
+  // teste anterior), a linha da aula — video_ref incluído — passa a ser
+  // legível normalmente. Prova que a política nega por falta de acesso, não
+  // por acidente: uma vez que o acesso existe, can_access_course libera.
+  it('designer também passa a enxergar a aula depois da liberação individual', async () => {
+    const cliente = await authClient(emailDesigner)
+    const { data, error } = await cliente
+      .from('lessons')
+      .select('id, status, video_ref')
+      .eq('id', aulaTrafego)
+    expect(error).toBeNull()
+    expect(data).toHaveLength(1)
+    expect(data![0]?.video_ref).toBe('dQw4w9WgXcQ')
   })
 
   // Um update barrado pelo RLS pode devolver "sucesso" sem alterar linha
@@ -303,5 +326,64 @@ describe('RLS — inativo perde acesso mesmo sendo admin', () => {
 
     const { data: rascunho } = await cliente.from('courses').select('id').eq('id', cursoRascunho)
     expect(rascunho).toEqual([])
+  })
+})
+
+// Corrigido em 0004_corrige_leitura_de_aulas.sql: o ramo "vejo a própria
+// linha" de liberacoes_leitura e solicitacoes_leitura não exigia
+// auth_is_active(), ao contrário de progresso_proprio (lesson_progress). Uma
+// pessoa desativada ainda logava normalmente (status não bloqueia o Supabase
+// Auth) e lia as próprias liberações e solicitações passadas.
+describe('RLS — auth_is_active() também corta a leitura da própria liberação e solicitação', () => {
+  it('pessoa desativada deixa de ler a própria liberação e a própria solicitação', async () => {
+    const stamp = Date.now()
+    const email = `colaborador-status-${stamp}@gexcorp.com.br`
+    const userId = await createTestUser({
+      email,
+      fullName: 'Colaborador Status',
+      role: 'member',
+      areaId: areaTrafego,
+    })
+    lixeira.usuario(userId)
+
+    const { error: grantError } = await db.from('course_access').insert({
+      user_id: userId,
+      course_id: cursoTrafego,
+      granted_by: liderId,
+    })
+    expect(grantError).toBeNull()
+
+    const { error: requestError } = await db.from('access_requests').insert({
+      user_id: userId,
+      course_id: cursoTrafego,
+      status: 'pending',
+    })
+    expect(requestError).toBeNull()
+
+    // Controle: enquanto ativa, a pessoa lê as próprias linhas normalmente.
+    const clienteAtivo = await authClient(email)
+    const { data: liberacaoAtiva } = await clienteAtivo.from('course_access').select('id').eq('user_id', userId)
+    expect(liberacaoAtiva).toHaveLength(1)
+    const { data: solicitacaoAtiva } = await clienteAtivo
+      .from('access_requests')
+      .select('id')
+      .eq('user_id', userId)
+    expect(solicitacaoAtiva).toHaveLength(1)
+
+    const { error: desativaError } = await db.from('profiles').update({ status: 'inactive' }).eq('id', userId)
+    expect(desativaError).toBeNull()
+
+    // Mesma pessoa, agora desativada: as mesmas linhas somem.
+    const clienteInativo = await authClient(email)
+    const { data: liberacaoInativa } = await clienteInativo
+      .from('course_access')
+      .select('id')
+      .eq('user_id', userId)
+    expect(liberacaoInativa).toEqual([])
+    const { data: solicitacaoInativa } = await clienteInativo
+      .from('access_requests')
+      .select('id')
+      .eq('user_id', userId)
+    expect(solicitacaoInativa).toEqual([])
   })
 })

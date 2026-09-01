@@ -494,6 +494,13 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      contar_aulas_publicadas: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          course_id: string
+          total: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
