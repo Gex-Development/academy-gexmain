@@ -256,10 +256,15 @@ export async function decideAccessRequest(
 
     revalidatePath('/admin/solicitacoes')
     revalidatePath('/')
-    // Quem foi aprovado abre o link do e-mail e cai direto em /curso/[slug] —
-    // sem isto a página continuaria em cache mostrando o cadeado. Não pode
-    // depender do solicitante ter e-mail (bloco acima): `curso` vem da mesma
-    // leitura, então fica disponível aqui de qualquer forma.
+    // /curso/[slug] já é dinâmica (getCourseView chama getCurrentUser, que lê
+    // cookies()), então o Next.js nunca guarda essa rota no cache de rota
+    // estática — o solicitante já veria a tela liberada na própria próxima
+    // requisição, com ou sem isto. Esta chamada só limpa o cache deste
+    // PROCESSO de servidor (Data Cache/Router Cache) para o path, na
+    // requisição do ADMIN que decidiu — não alcança nada no navegador do
+    // solicitante, que é uma sessão e uma máquina diferentes. Mantida por
+    // simetria com as outras revalidações desta função; inofensiva, mas não
+    // é o que "libera" a tela de quem foi aprovado.
     if (curso) revalidatePath(`/curso/${curso.slug}`)
     return ok(null)
   } catch (error) {
