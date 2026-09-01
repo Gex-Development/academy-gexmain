@@ -70,8 +70,12 @@ export async function invitePerson(
     const admin = createAdminSupabase()
 
     // O convite do Supabase Auth envia o e-mail e cria o usuário sem senha.
+    // O redirect passa por /auth/confirm (não direto para /convite): é essa
+    // rota que troca o token_hash do link por sessão via verifyOtp — sem
+    // isso a pessoa cai em /convite sem sessão nenhuma, e o updateUser da
+    // troca de senha falha.
     const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/convite`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/confirm?next=/convite`,
       data: { full_name: fullName },
     })
 

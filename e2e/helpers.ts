@@ -12,8 +12,15 @@ export function adminClient() {
 }
 
 /**
- * Cria uma pessoa já com senha, pulando o e-mail de convite.
- * O fluxo do link por e-mail é verificado à parte, no Inbucket local.
+ * Cria uma pessoa já com senha, pulando o e-mail de convite: os testes deste
+ * arquivo cobrem o app a partir de uma sessão já autenticada, não o link do
+ * e-mail em si.
+ *
+ * O fluxo do link (token_hash trocado por sessão em /auth/confirm) NÃO tem
+ * cobertura automatizada — nem aqui, nem em nenhum outro lugar da suíte, que
+ * roda contra o projeto Supabase remoto de desenvolvimento, sem Inbucket
+ * local. Ele depende do template de e-mail configurado no painel do Supabase
+ * incluir `token_hash`; ver a nota em src/app/auth/confirm/route.ts.
  */
 export async function criarUsuarioDeTeste(input: {
   email: string

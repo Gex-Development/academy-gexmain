@@ -40,7 +40,14 @@ export function DefinirSenhaForm({ ativarConta }: { ativarConta: boolean }) {
       return
     }
 
-    if (ativarConta) await activateAccount()
+    if (ativarConta) {
+      const resultado = await activateAccount()
+      if (!resultado.ok) {
+        setErro(resultado.error)
+        setEnviando(false)
+        return
+      }
+    }
 
     router.replace('/')
     router.refresh()

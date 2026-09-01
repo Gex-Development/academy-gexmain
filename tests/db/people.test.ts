@@ -124,6 +124,81 @@ describe('RLS: escrita em profiles (profiles_admin_escreve)', () => {
   })
 })
 
+// A E2E "colaborador abre o próprio perfil" já prova o caminho permitido
+// (nome e foto mudam) contra um navegador de verdade. O que falta — e é
+// exatamente o que vira brecha de segurança se faltar — é provar o lado
+// bloqueado: autenticado como a própria pessoa (não service_role, que ignora
+// RLS por completo), nenhuma tentativa de embutir role, status, area_id ou
+// email numa autoedição pode passar. Um update barrado pelo RLS pode devolver
+// sucesso com zero linhas afetadas — por isso a prova real é reler com o
+// admin client, não só checar o retorno do update.
+describe('RLS: edição do próprio perfil (profiles_edita_o_proprio)', () => {
+  it('recusa autoedição que muda role, status, area_id ou email; permite nome e foto', async () => {
+    const stamp = Date.now()
+
+    const { data: area } = await db
+      .from('areas')
+      .insert({ name: 'Edição Própria', slug: `edicao-propria-${stamp}` })
+      .select('id')
+      .single()
+
+    const email = `autoedicao-${stamp}@gexcorp.com.br`
+    const userId = await createTestUser({
+      email,
+      fullName: 'Autoedição de Teste',
+      role: 'member',
+      areaId: area!.id,
+    })
+
+    const asSelf = await authClient(email)
+
+    // Cada tentativa isolada, para provar que cada coluna fixada barra
+    // sozinha — não só a combinação delas.
+    const tentativas = [
+      { role: 'admin' },
+      { status: 'inactive' },
+      { area_id: null },
+      { email: `sequestrado-${stamp}@gexcorp.com.br` },
+    ] as const
+
+    for (const alteracao of tentativas) {
+      const { error } = await asSelf.from('profiles').update(alteracao).eq('id', userId)
+      expect(error, `deveria recusar a alteração ${JSON.stringify(alteracao)}`).not.toBeNull()
+    }
+
+    const { data: aindaOriginal } = await db
+      .from('profiles')
+      .select('role, status, area_id, email')
+      .eq('id', userId)
+      .single()
+    expect(aindaOriginal).toMatchObject({
+      role: 'member',
+      status: 'active',
+      area_id: area!.id,
+      email,
+    })
+
+    // Controle: nome e foto, sem tocar nas colunas fixadas, têm que passar —
+    // sem isto o teste só provaria "a política bloqueia tudo", não que ela
+    // distingue as colunas.
+    const { error: okError } = await asSelf
+      .from('profiles')
+      .update({ full_name: 'Nome Atualizado', avatar_url: 'https://exemplo.com/foto.jpg' })
+      .eq('id', userId)
+    expect(okError).toBeNull()
+
+    const { data: atualizado } = await db
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', userId)
+      .single()
+    expect(atualizado).toMatchObject({
+      full_name: 'Nome Atualizado',
+      avatar_url: 'https://exemplo.com/foto.jpg',
+    })
+  })
+})
+
 // Prova o trigger profiles_exige_admin (invariante do banco: sempre existe ao
 // menos um admin ativo). A invariante é global à tabela inteira — não dá para
 // isolar "o admin do meu teste" dos admins deixados ativos por outros
