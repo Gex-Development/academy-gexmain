@@ -12,6 +12,38 @@
 
 **Pré-requisito:** Fase 1 concluída (`docs/superpowers/plans/2026-08-31-gex-academy-fase-1-fundacao.md`).
 
+## Herança da fase 1 — leia antes de começar
+
+A fase 1 terminou com revisão de branch inteiro limpa. Três coisas que ela
+aprendeu, e que esta fase precisa respeitar:
+
+**1. As políticas RLS das tabelas de conteúdo só chegam na Task 7 desta fase.**
+Até lá, `courses`, `lessons`, `lesson_attachments`, `course_access`,
+`access_requests`, `lesson_progress`, `questions` e `answers` têm RLS ligado e
+**zero políticas** — o que significa que um cliente `createServerSupabase()` lê
+`[]` de todas elas. Isso é falha fechada, e está correto.
+
+⚠️ **Quando uma consulta sua voltar vazia por causa disso, a resposta NÃO é
+trocar para `createAdminSupabase()`.** A chave de serviço ignora o RLS de forma
+permanente e silenciosa, e é assim que a segunda camada de segurança some do
+projeto. Ou escreva a política que falta, ou aceite o vazio até a Task 7.
+
+**2. Erros de banco que chegam ao usuário carregam `GX001`.** Toda
+`raise exception` nossa usa `using errcode = 'GX001'`; `toActionError` repassa só
+esse código. Ver a seção "Convenção de erros do banco" no plano da fase 1.
+
+**3. A paridade entre `canAccessCourse` e `can_access_course` não é testada por
+nada.** São duas cópias da mesma regra de autorização, uma em TypeScript e outra
+em SQL, e nada garante que concordem. A Task 7 desta fase, que cria a função SQL,
+**deve** rodar a mesma matriz de 23 casos de `src/lib/access/can-access-course.test.ts`
+contra a função do banco e comparar os resultados um a um. Sem isso, as duas
+divergem com o tempo e só uma delas tem teste.
+
+**4. Os testes deixam lixo no banco de desenvolvimento remoto**, que é
+compartilhado. Nenhum arquivo tem `afterAll`. Esta fase deve criar um helper de
+limpeza em `tests/db/client.ts` e usá-lo, antes que a lista de usuários do painel
+de Auth fique inutilizável.
+
 ## Global Constraints
 
 Valem as mesmas restrições da fase 1, repetidas aqui porque cada tarefa é lida isoladamente:
