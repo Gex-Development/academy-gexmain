@@ -124,12 +124,27 @@ function paraAccessCourse(curso: LinhaCursoPainel): AccessCourse {
  * todo mundo) — nenhuma rede aqui, só a conta.
  *
  * "Disponíveis" é calculado por PESSOA: para cada uma, quantas aulas
- * publicadas existem nos cursos que ELA pode acessar (via `canAccessCourse`,
- * considerando área E liberação avulsa) — não a soma de todas as aulas da
- * plataforma, que puniria quem tem menos cursos liberados. Por isso a busca
- * de acesso por pessoa roda contra `linhasCursos` inteiro, não contra a
- * lista já recortada por área do gestor — uma liberação avulsa para um
- * curso de OUTRA área ainda soma aulas em `disponiveis`.
+ * publicadas existem nos cursos que ELA acessa COMO ALUNO (`canAccessCourse`
+ * devolvendo `'view'`, considerando área E liberação avulsa) — não a soma de
+ * todas as aulas da plataforma, que puniria quem tem menos cursos liberados.
+ * Por isso a busca de acesso por pessoa roda contra `linhasCursos` inteiro,
+ * não contra a lista já recortada por área do gestor — uma liberação avulsa
+ * para um curso de OUTRA área ainda soma aulas em `disponiveis`.
+ *
+ * Decisão de produto (revisão de fase 3): `'view'`, não `'manage'` nem
+ * `!== 'none'` — um gestor não é aluno do curso que ele mesmo gerencia.
+ * Antes, o denominador de cada pessoa incluía os cursos que ela GERENCIA
+ * (`canAccessCourse` devolve `'manage'` pra esses), e como a lista ordena
+ * por percentual crescente, um líder ou admin flutuava para o topo da tela
+ * cuja função é mostrar QUEM ESTÁ ATRASADO — inflado por cursos que a
+ * própria pessoa publica, não assiste. CONSEQUÊNCIA, para quem for reverter
+ * esta decisão: um líder continua na lista pela trilha inicial e pelos
+ * cursos de OUTRAS áreas que ele só acessa (nunca gerencia nenhum dos
+ * dois), com um percentual que agora significa algo; um ADMIN, que gerencia
+ * todo curso publicado de toda área (e enxerga até rascunho), fica com
+ * `disponiveis: 0` sempre — e por isso SAI da lista "Por pessoa" logo
+ * abaixo (não há nada a relatar sobre uma pessoa com zero aulas
+ * disponíveis).
  *
  * `onboardingConcluido` é verdadeiro só quando a trilha inicial existe,
  * está publicada, tem pelo menos uma aula publicada, e a pessoa concluiu
@@ -170,28 +185,37 @@ export function montarPainel(
 
   const listaPerfis = linhasPerfis.filter((p) => visivelParaGestor(atual, p.area_id))
 
-  const pessoas: PersonProgress[] = listaPerfis.map((perfil) => {
-    const usuario = paraAccessUser(perfil)
-    const liberados = liberacoesPorUsuario.get(perfil.id) ?? new Set<string>()
-    const concluidasDaPessoa = concluidasPorUsuario.get(perfil.id) ?? new Set<string>()
+  const pessoas: PersonProgress[] = listaPerfis
+    .map((perfil) => {
+      const usuario = paraAccessUser(perfil)
+      const liberados = liberacoesPorUsuario.get(perfil.id) ?? new Set<string>()
+      const concluidasDaPessoa = concluidasPorUsuario.get(perfil.id) ?? new Set<string>()
 
-    const aulasDisponiveis = linhasCursos
-      .filter((curso) => canAccessCourse(usuario, paraAccessCourse(curso), liberados) !== 'none')
-      .flatMap((curso) => aulasPorCurso.get(curso.id) ?? [])
+      // === 'view', não !== 'none': só conta como aluno, nunca como gestor
+      // — ver o comentário de montarPainel acima.
+      const aulasDisponiveis = linhasCursos
+        .filter((curso) => canAccessCourse(usuario, paraAccessCourse(curso), liberados) === 'view')
+        .flatMap((curso) => aulasPorCurso.get(curso.id) ?? [])
 
-    const concluidas = aulasDisponiveis.filter((id) => concluidasDaPessoa.has(id)).length
+      const concluidas = aulasDisponiveis.filter((id) => concluidasDaPessoa.has(id)).length
 
-    return {
-      userId: perfil.id,
-      name: perfil.full_name,
-      areaName: perfil.areas?.name ?? null,
-      onboardingConcluido:
-        aulasOnboarding.length > 0 && aulasOnboarding.every((id) => concluidasDaPessoa.has(id)),
-      concluidas,
-      disponiveis: aulasDisponiveis.length,
-      percent: progressPercent(concluidas, aulasDisponiveis.length),
-    }
-  })
+      return {
+        userId: perfil.id,
+        name: perfil.full_name,
+        areaName: perfil.areas?.name ?? null,
+        onboardingConcluido:
+          aulasOnboarding.length > 0 && aulasOnboarding.every((id) => concluidasDaPessoa.has(id)),
+        concluidas,
+        disponiveis: aulasDisponiveis.length,
+        percent: progressPercent(concluidas, aulasDisponiveis.length),
+      }
+    })
+    // Zero aulas disponíveis (todo curso que a pessoa toca, ela só gerencia
+    // — o caso de todo admin, e de um líder que só gerencia a própria área
+    // sem acessar mais nada como aluno): não há nada a relatar sobre essa
+    // pessoa nesta tela, então ela sai da lista em vez de aparecer com
+    // "0%" no topo.
+    .filter((pessoa) => pessoa.disponiveis > 0)
 
   const cursosVisiveis = linhasCursos.filter(
     (curso) => curso.status === 'published' && visivelParaGestor(atual, curso.area_id),

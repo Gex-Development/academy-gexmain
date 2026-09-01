@@ -205,18 +205,72 @@ describe('montarPainel — curso sem aula publicada', () => {
 })
 
 describe('montarPainel — status vem da linha, não cravado (Correção 2)', () => {
-  it('pessoa com status diferente de active não acessa nada, mesmo aparecendo na lista', () => {
+  it('pessoa com status diferente de active fica com zero aulas disponíveis, mesmo tendo um curso "próprio" da área — e sai da lista (Item 11)', () => {
     // getDashboard filtra `.eq('status', 'active')` na consulta real, mas a
     // função pura não deve depender disso: se `status` fosse cravado como
-    // 'active' aqui dentro, uma pessoa desativada contaria acesso que não
-    // tem mais.
+    // 'active' aqui dentro, canAccessCourse devolveria 'view' para o curso
+    // da própria área (member, mesma área) e a pessoa apareceria na lista
+    // com aulas disponíveis — em vez de ficar de fora por ter zero.
     const atual = { role: 'admin', areaId: null }
     const perfis = [perfil({ id: 'p1', area_id: AREA_TRAFEGO, status: 'inactive' })]
     const cursoProprio = curso({ id: 'c1', area_id: AREA_TRAFEGO })
 
     const { pessoas } = montarPainel(atual, perfis, [cursoProprio], [], [])
 
-    expect(pessoas[0].disponiveis).toBe(0)
-    expect(pessoas[0].concluidas).toBe(0)
+    expect(pessoas).toEqual([])
+  })
+})
+
+describe('montarPainel — Item 11: "disponíveis" só conta curso acessado COMO ALUNO, nunca como gestor', () => {
+  it('líder que gerencia um curso da própria área não soma essas aulas em disponíveis — canAccessCourse devolve "manage", não "view"', () => {
+    const atual = { role: 'leader', areaId: AREA_TRAFEGO }
+    const perfis = [perfil({ id: 'lider-1', full_name: 'Líder Tráfego', role: 'leader', area_id: AREA_TRAFEGO })]
+    const cursoGerenciado = curso({ id: 'c-trafego', area_id: AREA_TRAFEGO, lessons: [{ id: 'a1', status: 'published' }] })
+
+    const { pessoas } = montarPainel(atual, perfis, [cursoGerenciado], [], [])
+
+    // Zero aulas disponíveis (o único curso que ele toca, ele gerencia) —
+    // não há nada a relatar sobre esta pessoa, então ela sai da lista.
+    expect(pessoas).toEqual([])
+  })
+
+  it('líder continua na lista pela trilha inicial e por um curso de OUTRA área que ele só acessa (nunca gerencia nenhum dos dois)', () => {
+    const atual = { role: 'leader', areaId: AREA_TRAFEGO }
+    const perfis = [perfil({ id: 'lider-1', full_name: 'Líder Tráfego', role: 'leader', area_id: AREA_TRAFEGO })]
+    const trilha = curso({
+      id: 'onboarding',
+      title: 'Trilha inicial',
+      area_id: null,
+      is_onboarding: true,
+      lessons: [{ id: 'o1', status: 'published' }],
+    })
+    const cursoDeFora = curso({
+      id: 'c-design',
+      title: 'Curso Design',
+      area_id: AREA_DESIGN,
+      areas: { name: 'Design' },
+      lessons: [{ id: 'a2', status: 'published' }],
+    })
+    const liberacoes: LinhaLiberacaoPainel[] = [{ user_id: 'lider-1', course_id: 'c-design' }]
+
+    const { pessoas } = montarPainel(atual, perfis, [trilha, cursoDeFora], liberacoes, [])
+
+    // 1 aula da trilha (todo ativo acessa como aluno) + 1 aula do curso de
+    // Design liberado individualmente (ele não gerencia Design) = 2.
+    expect(pessoas).toHaveLength(1)
+    expect(pessoas[0].disponiveis).toBe(2)
+  })
+
+  it('admin não aparece na lista "Por pessoa": gerencia todo curso publicado (e até rascunho), nunca tem aula "view"', () => {
+    const atual = { role: 'admin', areaId: null }
+    const perfis = [perfil({ id: 'admin-1', full_name: 'Admin', role: 'admin', area_id: null, areas: null })]
+    const cursos = [
+      curso({ id: 'c-trafego', area_id: AREA_TRAFEGO }),
+      curso({ id: 'c-design', title: 'Curso Design', area_id: AREA_DESIGN, areas: { name: 'Design' } }),
+    ]
+
+    const { pessoas } = montarPainel(atual, perfis, cursos, [], [])
+
+    expect(pessoas).toEqual([])
   })
 })
