@@ -10,8 +10,8 @@ import { createLesson, deleteLesson, moveLesson, type LessonRow } from '@/server
 
 export function LessonList({ courseId, lessons }: { courseId: string; lessons: LessonRow[] }) {
   const [createState, createAction, creating] = useActionState(createLesson, null)
-  const [moveState, moveAction] = useActionState(moveLesson, null)
-  const [deleteState, deleteAction] = useActionState(deleteLesson, null)
+  const [moveState, moveAction, moving] = useActionState(moveLesson, null)
+  const [deleteState, deleteAction, deleting] = useActionState(deleteLesson, null)
   const erro =
     (!createState?.ok && createState?.error) ||
     (!moveState?.ok && moveState?.error) ||
@@ -45,7 +45,12 @@ export function LessonList({ courseId, lessons }: { courseId: string; lessons: L
             <form action={moveAction}>
               <input type="hidden" name="id" value={lesson.id} />
               <input type="hidden" name="direcao" value="cima" />
-              <Button type="submit" variant="secundario" className="px-2 py-1 text-xs" disabled={indice === 0}>
+              <Button
+                type="submit"
+                variant="secundario"
+                className="px-2 py-1 text-xs"
+                disabled={indice === 0 || moving}
+              >
                 ↑
               </Button>
             </form>
@@ -56,7 +61,7 @@ export function LessonList({ courseId, lessons }: { courseId: string; lessons: L
                 type="submit"
                 variant="secundario"
                 className="px-2 py-1 text-xs"
-                disabled={indice === lessons.length - 1}
+                disabled={indice === lessons.length - 1 || moving}
               >
                 ↓
               </Button>
@@ -64,14 +69,18 @@ export function LessonList({ courseId, lessons }: { courseId: string; lessons: L
             <form
               action={deleteAction}
               onSubmit={(e) => {
-                if (!confirm(`Excluir a aula "${lesson.title}"? Isso apaga anexos e dúvidas dela.`)) {
+                if (
+                  !confirm(
+                    `Excluir a aula "${lesson.title}"? Isso apaga os anexos, as dúvidas e o registro de conclusão de quem já assistiu.`,
+                  )
+                ) {
                   e.preventDefault()
                 }
               }}
             >
               <input type="hidden" name="id" value={lesson.id} />
-              <Button type="submit" variant="perigo" className="px-2 py-1 text-xs">
-                Excluir
+              <Button type="submit" variant="perigo" className="px-2 py-1 text-xs" disabled={deleting}>
+                {deleting ? 'Excluindo…' : 'Excluir'}
               </Button>
             </form>
           </li>
