@@ -1,6 +1,6 @@
 import type { ParsedVideo } from './types'
 
-const YOUTUBE_ID = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/
+const YOUTUBE_ID = /(?:(?<![a-z])youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/
 
 // Formatos confirmados contra um snippet real da conta VTurb da GEX:
 //   conta   -> UUID
@@ -11,6 +11,7 @@ const YOUTUBE_ID = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/)|youtu\.be
 // por isso o padrão exige o segmento `/players/`.
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 const PLAYER_ID = '[0-9a-fA-F]{24}'
+const VERSAO_PADRAO = 'v4'
 const VTURB_URL = new RegExp(
   `scripts\\.converteai\\.net/(${UUID})/players/(${PLAYER_ID})(?:/(v\\d+))?/player\\.js`,
 )
@@ -35,9 +36,8 @@ export function parseVideoInput(input: string): ParsedVideo | null {
 
   const vturb = texto.match(VTURB_URL) ?? texto.match(VTURB_TRIO)
   if (vturb) {
-    const versao = vturb[3]
-    const ref = versao ? `${vturb[1]}/${vturb[2]}/${versao}` : `${vturb[1]}/${vturb[2]}`
-    return { provider: 'vturb', ref }
+    const versao = vturb[3] ?? VERSAO_PADRAO
+    return { provider: 'vturb', ref: `${vturb[1]}/${vturb[2]}/${versao}` }
   }
 
   return null

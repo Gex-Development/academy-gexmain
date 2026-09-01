@@ -47,6 +47,10 @@ describe('parseVideoInput — YouTube', () => {
       'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1',
     )
   })
+
+  it('recusa URLs de subdomínios falsificados como notyoutube.com', () => {
+    expect(parseVideoInput('https://notyoutube.com/watch?v=dQw4w9WgXcQ')).toBeNull()
+  })
 })
 
 describe('parseVideoInput — VTurb', () => {
@@ -73,7 +77,7 @@ describe('parseVideoInput — VTurb', () => {
   })
 
   it('assume v4 quando o caminho não traz versão', () => {
-    const semVersao = `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/v4/player.js`
+    const semVersao = `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js`
     expect(parseVideoInput(semVersao)).toEqual({ provider: 'vturb', ref: REF })
   })
 
@@ -101,6 +105,15 @@ describe('parseVideoInput — VTurb', () => {
   it('monta o id do container com hífen, como o snippet real', () => {
     expect(vturbContainerId(REF)).toBe(`vid-${PLAYER}`)
   })
+
+  it('round-trip: parse version-less URL e reconstrói com v4', () => {
+    const semVersao = `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js`
+    const parsed = parseVideoInput(semVersao)
+    expect(parsed).toBeTruthy()
+    const rebuilt = vturbScriptSrc(parsed!.ref)
+    expect(rebuilt).toBe(`https://scripts.converteai.net/${CONTA}/players/${PLAYER}/v4/player.js`)
+    expect(rebuilt).not.toContain('undefined')
+  })
 })
 
 describe('parseVideoInput — entradas inválidas', () => {
@@ -124,7 +137,7 @@ describe('parseVideoInput — entradas inválidas', () => {
   it('extrai apenas os identificadores mesmo com script malicioso junto', () => {
     const misto = `<script>alert(1)</script><script src="https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js"></script>`
     const parsed = parseVideoInput(misto)
-    expect(parsed).toEqual({ provider: 'vturb', ref: `${CONTA}/${PLAYER}` })
+    expect(parsed).toEqual({ provider: 'vturb', ref: REF })
     expect(parsed!.ref).not.toContain('<')
     expect(parsed!.ref).not.toContain('alert')
   })
