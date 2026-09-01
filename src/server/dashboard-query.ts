@@ -15,9 +15,18 @@
 // `visivelParaGestor`, abaixo, a ÚNICA barreira entre um líder e os dados de
 // outra área — daí os testes deste arquivo cobrirem esse predicado com
 // cuidado, inclusive o caso do líder sem área.
+//
+// `visivelParaGestor` delega em `podeGerenciarArea` (forum-query.ts): a
+// revisão de fase 3 apontou que as duas, mais `pertenceAFilaDoLider`
+// (também forum-query.ts), eram três cópias byte-a-byte da mesma regra —
+// "admin, ou líder cuja área bate". Cada uma responde uma pergunta
+// conceitualmente diferente (o nome de cada uma comunica qual), o que
+// justifica manter os três nomes; não justificava manter a lógica
+// reimplementada em três lugares.
 
 import { canAccessCourse, type AccessCourse, type AccessUser } from '@/lib/access'
 import { progressPercent } from '@/lib/progress/percent'
+import { podeGerenciarArea } from './forum-query'
 
 export type PersonProgress = {
   userId: string
@@ -68,25 +77,25 @@ export type LinhaProgressoPainel = { user_id: string; lesson_id: string }
 
 /**
  * Área visível para quem está vendo o painel: admin enxerga qualquer área;
- * líder só quando a PRÓPRIA área não é nula e bate com `areaId`. Mesma
- * forma de `podeGerenciarArea` (forum-query.ts) e da ramificação 3 de
- * `canAccessCourse` — reimplementada aqui, não importada de lá, porque a
- * pergunta é outra ("o que este painel mostra a quem gerencia", não "quem
- * modera este fórum" ou "quem edita este curso"); forum-query.ts já
- * documenta por que este projeto prefere um predicado pequeno e dedicado a
- * forçar reuso entre perguntas que hoje coincidem mas podem divergir.
+ * líder só quando a PRÓPRIA área não é nula e bate com `areaId`. Mesma regra
+ * de `podeGerenciarArea` (forum-query.ts) e da ramificação 3 de
+ * `canAccessCourse` — nome diferente porque a pergunta é outra ("o que este
+ * painel mostra a quem gerencia", não "quem modera este fórum" ou "quem
+ * edita este curso"), mas delega em vez de reimplementar (ver o comentário
+ * no topo deste arquivo).
  *
  * A comparação com `null` é o ponto central: sem ela, `atual.areaId === null`
  * (um líder cadastrado sem área) casaria com QUALQUER linha sem área — e a
  * trilha de onboarding é justamente um curso sem área. `atual.areaId !==
  * null` fecha essa porta: um líder sem área não vê pessoa nem curso nenhum,
- * em vez de ver todo mundo e todo curso sem área.
+ * em vez de ver todo mundo e todo curso sem área. (`podeGerenciarArea` já
+ * faz exatamente essa checagem — documentado lá.)
  */
 export function visivelParaGestor(
   atual: { role: string; areaId: string | null },
   areaId: string | null,
 ): boolean {
-  return atual.role === 'admin' || (atual.role === 'leader' && atual.areaId !== null && atual.areaId === areaId)
+  return podeGerenciarArea(atual, areaId)
 }
 
 /** Linha de `profiles` (SELECT_PAINEL_PERFIS) para o AccessUser que canAccessCourse espera. */

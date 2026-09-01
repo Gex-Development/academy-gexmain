@@ -230,23 +230,19 @@ export type LinhaFilaDuvidas = {
  * enxerga por liberação avulsa. Um filtro extra e barato aqui garante isso
  * mesmo se o RLS um dia mudar.
  *
- * Mesma forma de podeGerenciarArea (acima): `areaId !== null` explícito
- * antes de comparar. Sem essa guarda, um líder sem área própria (admin
- * cadastrou sem área) bateria `null === null` com QUALQUER curso sem área —
- * e a trilha de onboarding é exatamente um curso sem área. `role ===
- * 'leader'` explícito também, mais estreito que "não-admin": correto porque
- * listPendingQuestions já devolve `[]` para member antes de chegar aqui,
- * então nada de legítimo se perde, e esta função deixa de depender de quem
- * a chama para estar certa.
+ * Mesma regra de podeGerenciarArea (acima) — nome diferente porque a
+ * pergunta é outra ("esta pergunta pertence à MINHA fila?" vs "eu MODERO
+ * este fórum?"), mas o cálculo é idêntico: delega em vez de reimplementar.
+ * A revisão de fase 3 apontou que este predicado, podeGerenciarArea e
+ * visivelParaGestor (dashboard-query.ts) eram três cópias byte-a-byte da
+ * mesma regra — mantém os três nomes (comunicam a pergunta de cada lugar),
+ * mas a lógica agora vive só aqui.
  */
 export function pertenceAFilaDoLider(
   pessoa: { role: string; areaId: string | null },
   areaIdDoCurso: string | null,
 ): boolean {
-  return (
-    pessoa.role === 'admin' ||
-    (pessoa.role === 'leader' && pessoa.areaId !== null && pessoa.areaId === areaIdDoCurso)
-  )
+  return podeGerenciarArea(pessoa, areaIdDoCurso)
 }
 
 /** Uma linha de `questions` (com aula/curso aninhados) vira um PendingQuestion pronto para a tela. */
