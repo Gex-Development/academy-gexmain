@@ -12,6 +12,7 @@ import { createServerSupabase } from '@/lib/supabase/server'
  * precisa apontar para cá com `token_hash` no link, não `token` nem
  * `{{ .ConfirmationURL }}` puro — por exemplo:
  *   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/convite
+ *   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/nova-senha
  * Sem isso esta rota nunca recebe `token_hash`, cai em "link-invalido" e o
  * fluxo de primeiro acesso não funciona — troca de token por sessão nunca
  * chega a acontecer. Não verificado de ponta a ponta nesta tarefa: pendente
@@ -27,29 +28,40 @@ function comoTipoValido(valor: string | null): valor is EmailOtpType {
   return valor !== null && TIPOS_PERMITIDOS.has(valor)
 }
 
+// Os dois únicos destinos que existem depois da confirmação — e os dois são
+// nossos.
+const DESTINOS_PERMITIDOS = ['/convite', '/nova-senha'] as const
+
 /**
- * Só aceita um caminho interno começando com uma única barra. Sem esta
- * checagem, `next` — que vem direto da query string, controlada por quem
- * monta o link — poderia apontar para fora do domínio (`https://evil.com`)
- * ou usar um caminho "protocol-relative" (`//evil.com`, que o navegador trata
- * como um domínio externo apesar de parecer um caminho interno). Como esta
- * rota já autenticou a pessoa antes do redirect, um `next` externo abriria
- * open redirect a partir do próprio domínio da empresa, incluindo o caso mais
- * grave: um link de recuperação com o token do PRÓPRIO atacante, que loga a
- * vítima na conta dele e a leva embora do site em seguida.
+ * Só dois destinos existem depois da confirmação, e ambos são nossos. Uma
+ * lista branca elimina a classe inteira de redirecionamento aberto — tentar
+ * sanear a string perde para a normalização de URL do navegador: um valor
+ * como "/\evil.com" não começa com "//", mas o parser de URL (WHATWG, o
+ * mesmo algoritmo usado para resolver o cabeçalho Location em qualquer
+ * navegador) trata a barra invertida logo após a primeira barra como uma
+ * segunda barra e resolve para o host externo "evil.com" — o mesmo vale para
+ * "/\/evil.com" e para uma barra seguida de tab ("/\t/evil.com"), já que
+ * caracteres de controle como tab são descartados durante a normalização.
+ * Nenhum filtro de caracteres fecha essa classe inteira; só a lista branca.
+ *
+ * O fallback depende de `type`: um link de recuperação sem `next` (ou com um
+ * `next` fora da lista) tem que cair em /nova-senha, não em /convite — mandar
+ * quem está recuperando a senha para a tela de "bem-vindo, defina sua senha"
+ * do convite seria a tela errada.
  */
-function proximaRotaSegura(valor: string | null): string {
-  if (valor && valor.startsWith('/') && !valor.startsWith('//')) return valor
-  return '/convite'
+export function destinoSeguro(bruto: string | null, type: EmailOtpType): string {
+  if (bruto && (DESTINOS_PERMITIDOS as readonly string[]).includes(bruto)) return bruto
+  return type === 'recovery' ? '/nova-senha' : '/convite'
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const token_hash = searchParams.get('token_hash')
   const type = searchParams.get('type')
-  const next = proximaRotaSegura(searchParams.get('next'))
 
   if (!token_hash || !comoTipoValido(type)) redirect('/login?erro=link-invalido')
+
+  const next = destinoSeguro(searchParams.get('next'), type)
 
   const supabase = await createServerSupabase()
   const { error } = await supabase.auth.verifyOtp({ type, token_hash })
