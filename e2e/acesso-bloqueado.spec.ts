@@ -3,11 +3,22 @@ import { adminClient, criarAreaDeTeste, criarUsuarioDeTeste } from './helpers'
 
 const SENHA = 'senha-de-teste-123'
 
+// Timeout explícito nos três cliques deste arquivo (aqui e nos dois em
+// "colaborador da área..." abaixo): sem ele, a ação de clique não tem limite
+// próprio e só é interrompida pelo timeout global do teste (60s, ver
+// playwright.config.ts). Quando isso acontece, o `finally` que chama
+// limpar() não tem garantia de rodar até o fim antes do worker ser encerrado
+// — foi exatamente o que deixou fixtures presos no banco durante a checagem
+// de mutação documentada no relatório desta tarefa. Com um timeout de ação
+// bem abaixo do limite global, o mesmo clique falha como um erro comum de
+// asserção, com folga de sobra para o `finally` terminar.
+const TIMEOUT_CLIQUE = 15000
+
 async function entrar(page: Page, email: string) {
   await page.goto('/login')
   await page.getByLabel('E-mail').fill(email)
   await page.getByLabel('Senha').fill(SENHA)
-  await page.getByRole('button', { name: 'Entrar' }).click()
+  await page.getByRole('button', { name: 'Entrar' }).click({ timeout: TIMEOUT_CLIQUE })
   await expect(page).toHaveURL('/')
 }
 
@@ -208,10 +219,16 @@ test('colaborador da área abre o curso e a aula normalmente', async ({ page }) 
     // contagem de uma aula publicada), mas desta vez a pessoa TEM acesso —
     // sem este teste, uma política que bloqueasse todo mundo passaria pelas
     // mesmas asserções de "conteúdo não vaza".
-    await page.getByText(tituloCurso).click()
+    await page.getByText(tituloCurso).click({ timeout: TIMEOUT_CLIQUE })
     await expect(page.getByRole('heading', { name: tituloCurso })).toBeVisible()
 
-    await page.getByText(tituloAula).click()
+    // Afirma a lista de aulas explicitamente (não só de forma implícita,
+    // pelo wait de "clicável" do clique logo abaixo) — é ela, não só o
+    // player, que prova que o curso abriu de verdade e não caiu na tela de
+    // bloqueio (que também tem <h1> com o título do curso, só que sem
+    // nenhuma aula listada).
+    await expect(page.getByText(tituloAula)).toBeVisible()
+    await page.getByText(tituloAula).click({ timeout: TIMEOUT_CLIQUE })
     await expect(page.getByRole('heading', { name: tituloAula })).toBeVisible()
     await expect(page.locator('iframe[src*="youtube-nocookie.com"]')).toBeVisible()
   } finally {
