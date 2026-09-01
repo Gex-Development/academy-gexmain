@@ -62,6 +62,24 @@ Preencha `.env.local` com os valores do painel do Supabase (Project Settings):
 > não destrói nada e não passa pela trava. Na prática, `db:reset` só se
 > justifica enquanto o banco tiver apenas dados de teste.
 
+## Limpeza dos dados de teste
+
+As suítes de integração e E2E criam usuários, áreas e cursos **no projeto
+Supabase de verdade** e não os removem — por isso cada fixture carrega um
+carimbo de `Date.now()` no e-mail ou no slug, para nunca colidir entre
+execuções. Com o tempo isso enche a tela de Users e a lista de áreas.
+
+```bash
+node scripts/limpar-dados-de-teste.mjs            # mostra o que apagaria
+node scripts/limpar-dados-de-teste.mjs --apagar   # apaga
+```
+
+O critério é o carimbo de 13 dígitos, **nunca o domínio do e-mail**:
+`@gexcorp.com.br` é o domínio real da empresa e as fixtures também o usam.
+Apagar por domínio removeria gente de verdade.
+
+Rode a simulação antes de apagar e confira a lista de preservados.
+
 ## O primeiro administrador
 
 A plataforma é fechada por convite: toda pessoa entra porque um admin a
