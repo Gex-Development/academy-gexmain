@@ -122,6 +122,8 @@ O SMTP embutido do Supabase (usado enquanto não houver um provedor próprio con
 
 - `src/lib/access/` — regras puras de autorização de conteúdo (quem pode ver qual curso). **Mudar este código sem mudar as políticas RLS correspondentes (nas migrations de `supabase/migrations/`) na mesma alteração deixa as duas camadas divergentes** — uma delas vira a fonte de verdade errada.
 - `src/lib/auth/` — sessão atual (`session.ts`), guarda de papel (`guards.ts`) e lista de rotas públicas (`public-routes.ts`), usada tanto pelo proxy (`src/proxy.ts`) quanto pelos layouts.
+- `src/lib/video/` — interpreta link do YouTube e código do VTurb para montar o player da aula.
+- `src/lib/email/` — templates e envio pelo Resend (convite, recuperação de senha, dúvida nova, resposta, solicitação de acesso). `send.ts` nunca lança: uma falha de envio vira log, não erro na tela.
 - `src/server/` — server actions. Toda função exportada de um arquivo `'use server'` é um endpoint chamável por qualquer sessão (mesmo sem link nenhum apontando para ela) — cada uma valida entrada com Zod, confere papel e nunca lança para a tela (retorna `ActionResult<T>`).
 - `supabase/migrations/` — única fonte de verdade do schema e das políticas RLS. Aplicadas com `npm run db:push`; nunca editadas depois de já aplicadas — uma correção vira uma migration nova.
 
