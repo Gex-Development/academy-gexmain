@@ -12,6 +12,33 @@
 
 **Pré-requisito:** Fase 1 concluída (`docs/superpowers/plans/2026-08-31-gex-academy-fase-1-fundacao.md`).
 
+## Ordem de execução
+
+As tarefas deste plano **não são executadas na ordem em que estão numeradas.**
+
+A Task 7 cria as políticas RLS das tabelas de conteúdo. Sem elas, `courses`,
+`lessons`, `lesson_attachments`, `course_access` e `access_requests` têm RLS
+ligado e política nenhuma — o que significa que o cliente do usuário lê `[]` de
+todas. As Tasks 2 a 6 construiriam telas que não mostram nada, e a saída óbvia
+para quem estivesse implementando seria trocar para a chave de serviço, que
+ignora o RLS de forma permanente.
+
+Por isso a Task 7 é dividida:
+
+| Ordem | O que executar |
+|---|---|
+| 1º | **Task 7, Steps 1-3** — migration `0003` e testes de RLS |
+| 2º | Task 1 — parser de vídeo |
+| 3º | Task 2 — cursos |
+| 4º | Task 3 — aulas |
+| 5º | Task 4 — anexos |
+| 6º | Task 5 — vitrine |
+| 7º | Task 6 — páginas de curso e aula |
+| 8º | **Task 7, Steps 4-6** — E2E de bloqueio (depende das páginas) |
+
+A migration só depende de tabelas criadas na fase 1, e a função SQL espelha
+`canAccessCourse`, que também já existe. Nada impede que ela venha primeiro.
+
 ## Herança da fase 1 — leia antes de começar
 
 A fase 1 terminou com revisão de branch inteiro limpa. Três coisas que ela
