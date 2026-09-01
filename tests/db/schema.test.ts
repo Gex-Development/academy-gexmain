@@ -1,7 +1,8 @@
-import { beforeAll, describe, expect, it } from 'vitest'
-import { adminClient, authClient, createTestUser } from './client'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 const db = adminClient()
+const lixeira = criarLixeira()
 let areaId: string
 let ownerId: string
 
@@ -14,13 +15,17 @@ beforeAll(async () => {
     .single()
   if (error) throw error
   areaId = area.id
+  lixeira.area(areaId)
   ownerId = await createTestUser({
     email: `lider-${stamp}@gexcorp.com.br`,
     fullName: 'Líder de Tráfego',
     role: 'leader',
     areaId,
   })
+  lixeira.usuario(ownerId)
 })
+
+afterAll(() => lixeira.limpar())
 
 describe('restrições do schema', () => {
   it('recusa curso de onboarding com área preenchida', async () => {
@@ -58,6 +63,7 @@ describe('restrições do schema', () => {
       .select('id')
       .single()
     expect(first.error).toBeNull()
+    lixeira.curso(first.data!.id)
 
     const { error } = await db.from('courses').insert({
       title: 'Outra Trilha Inicial',
@@ -98,6 +104,7 @@ describe('restrições do schema', () => {
       })
       .select('id')
       .single()
+    lixeira.curso(course!.id)
 
     const { data: lesson } = await db
       .from('lessons')
@@ -136,6 +143,7 @@ describe('RLS: ativação da própria conta (profiles_ativa_a_si)', () => {
       .insert({ name: 'Ativação Própria', slug: `ativacao-propria-${stamp}` })
       .select('id')
       .single()
+    lixeira.area(area!.id)
 
     const email = `convidado-${stamp}@gexcorp.com.br`
     const userId = await createTestUser({
@@ -145,6 +153,7 @@ describe('RLS: ativação da própria conta (profiles_ativa_a_si)', () => {
       areaId: area!.id,
       status: 'invited',
     })
+    lixeira.usuario(userId)
 
     const asInvitedUser = await authClient(email)
 

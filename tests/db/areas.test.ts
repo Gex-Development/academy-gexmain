@@ -1,13 +1,17 @@
-import { describe, expect, it } from 'vitest'
-import { adminClient, authClient, createTestUser } from './client'
+import { afterAll, describe, expect, it } from 'vitest'
+import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 const db = adminClient()
+const lixeira = criarLixeira()
+
+afterAll(() => lixeira.limpar())
 
 describe('tabela areas', () => {
   it('impede duas áreas com o mesmo slug', async () => {
     const slug = `design-${Date.now()}`
-    const primeira = await db.from('areas').insert({ name: 'Design', slug })
+    const primeira = await db.from('areas').insert({ name: 'Design', slug }).select('id').single()
     expect(primeira.error).toBeNull()
+    lixeira.area(primeira.data!.id)
 
     const { error } = await db.from('areas').insert({ name: 'Design', slug })
     expect(error?.code).toBe('23505')
@@ -26,6 +30,7 @@ describe('tabela areas', () => {
       .select('id')
       .single()
     expect(fixtureError).toBeNull()
+    lixeira.area(fixture!.id)
 
     const { data: viaAdmin } = await db.from('areas').select('id').eq('id', fixture!.id)
     expect(viaAdmin).toEqual([{ id: fixture!.id }])
@@ -53,9 +58,15 @@ describe('RLS: escrita em areas (areas_escrita)', () => {
     const memberEmail = `membro-areas-${stamp}@gexcorp.com.br`
     const leaderEmail = `lider-areas-${stamp}@gexcorp.com.br`
     const adminEmail = `admin-areas-${stamp}@gexcorp.com.br`
-    await createTestUser({ email: memberEmail, fullName: 'Membro de Teste', role: 'member' })
-    await createTestUser({ email: leaderEmail, fullName: 'Líder de Teste', role: 'leader' })
-    await createTestUser({ email: adminEmail, fullName: 'Admin de Teste', role: 'admin' })
+    lixeira.usuario(
+      await createTestUser({ email: memberEmail, fullName: 'Membro de Teste', role: 'member' }),
+    )
+    lixeira.usuario(
+      await createTestUser({ email: leaderEmail, fullName: 'Líder de Teste', role: 'leader' }),
+    )
+    lixeira.usuario(
+      await createTestUser({ email: adminEmail, fullName: 'Admin de Teste', role: 'admin' }),
+    )
 
     const { data: fixture, error: fixtureError } = await db
       .from('areas')
@@ -63,6 +74,7 @@ describe('RLS: escrita em areas (areas_escrita)', () => {
       .select('id, name')
       .single()
     expect(fixtureError).toBeNull()
+    lixeira.area(fixture!.id)
 
     for (const [papel, email] of [
       ['membro', memberEmail],
@@ -95,7 +107,10 @@ describe('RLS: escrita em areas (areas_escrita)', () => {
     const adminInsert = await asAdmin
       .from('areas')
       .insert({ name: 'Área criada por admin', slug: `admin-${stamp}` })
+      .select('id')
+      .single()
     expect(adminInsert.error).toBeNull()
+    lixeira.area(adminInsert.data!.id)
   })
 })
 
@@ -115,23 +130,28 @@ describe('RLS: corte imediato de pessoa inativa (auth_is_active)', () => {
       .insert({ name: 'Corte Inativo', slug: `corte-inativo-${stamp}` })
       .select('id')
       .single()
+    lixeira.area(area!.id)
 
     const inactiveEmail = `inativo-corte-${stamp}@gexcorp.com.br`
     const activeEmail = `ativo-corte-${stamp}@gexcorp.com.br`
-    await createTestUser({
-      email: inactiveEmail,
-      fullName: 'Inativo Corte',
-      role: 'member',
-      areaId: area!.id,
-      status: 'inactive',
-    })
-    await createTestUser({
-      email: activeEmail,
-      fullName: 'Ativo Corte',
-      role: 'member',
-      areaId: area!.id,
-      status: 'active',
-    })
+    lixeira.usuario(
+      await createTestUser({
+        email: inactiveEmail,
+        fullName: 'Inativo Corte',
+        role: 'member',
+        areaId: area!.id,
+        status: 'inactive',
+      }),
+    )
+    lixeira.usuario(
+      await createTestUser({
+        email: activeEmail,
+        fullName: 'Ativo Corte',
+        role: 'member',
+        areaId: area!.id,
+        status: 'active',
+      }),
+    )
 
     // status é campo de aplicação, não bloqueia o login no Supabase Auth em
     // si — quem barra é a política de RLS, via auth_is_active(). Por isso o

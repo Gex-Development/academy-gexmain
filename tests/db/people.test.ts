@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { adminClient, authClient, createTestUser } from './client'
+import { afterAll, describe, expect, it } from 'vitest'
+import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 const db = adminClient()
+const lixeira = criarLixeira()
+
+afterAll(() => lixeira.limpar())
 
 describe('perfis', () => {
   it('cria perfil de colaborador com status ativo e área', async () => {
@@ -11,6 +14,7 @@ describe('perfis', () => {
       .insert({ name: 'Copy', slug: `copy-${stamp}` })
       .select('id')
       .single()
+    lixeira.area(area!.id)
 
     const id = await createTestUser({
       email: `copy-${stamp}@gexcorp.com.br`,
@@ -18,6 +22,7 @@ describe('perfis', () => {
       role: 'member',
       areaId: area!.id,
     })
+    lixeira.usuario(id)
 
     const { data } = await db
       .from('profiles')
@@ -30,6 +35,10 @@ describe('perfis', () => {
 
   it('apaga o perfil junto com o usuário do auth', async () => {
     const stamp = Date.now()
+    // Não registra `id` na lixeira: o próprio teste apaga este usuário abaixo
+    // para provar a cascata. Registrar mesmo assim faria limpar() tentar
+    // apagar de novo no fim do arquivo — deleteUser em id inexistente
+    // devolve erro, e isso derrubaria limpar() (que agrega falhas e lança).
     const id = await createTestUser({
       email: `temporario-${stamp}@gexcorp.com.br`,
       fullName: 'Temporário',
@@ -49,6 +58,10 @@ describe('perfis', () => {
       .insert({ name: 'Efêmera', slug: `efemera-${stamp}` })
       .select('id')
       .single()
+    // Registrada mesmo sendo apagada abaixo pelo próprio teste: ao contrário
+    // de deleteUser, apagar uma área já inexistente não gera erro — não há
+    // risco de limpar() falhar por causa disso.
+    lixeira.area(area!.id)
 
     const id = await createTestUser({
       email: `orfao-${stamp}@gexcorp.com.br`,
@@ -56,6 +69,7 @@ describe('perfis', () => {
       role: 'member',
       areaId: area!.id,
     })
+    lixeira.usuario(id)
 
     await db.from('areas').delete().eq('id', area!.id)
 
@@ -80,15 +94,16 @@ describe('RLS: escrita em profiles (profiles_admin_escreve)', () => {
     const leaderEmail = `lider-profiles-${stamp}@gexcorp.com.br`
     const adminEmail = `admin-profiles-${stamp}@gexcorp.com.br`
 
-    await createTestUser({ email: memberEmail, fullName: 'Membro RLS', role: 'member' })
-    await createTestUser({ email: leaderEmail, fullName: 'Líder RLS', role: 'leader' })
-    await createTestUser({ email: adminEmail, fullName: 'Admin RLS', role: 'admin' })
+    lixeira.usuario(await createTestUser({ email: memberEmail, fullName: 'Membro RLS', role: 'member' }))
+    lixeira.usuario(await createTestUser({ email: leaderEmail, fullName: 'Líder RLS', role: 'leader' }))
+    lixeira.usuario(await createTestUser({ email: adminEmail, fullName: 'Admin RLS', role: 'admin' }))
 
     const targetId = await createTestUser({
       email: `alvo-profiles-${stamp}@gexcorp.com.br`,
       fullName: 'Alvo RLS',
       role: 'member',
     })
+    lixeira.usuario(targetId)
 
     for (const [papel, email] of [
       ['membro', memberEmail],
@@ -141,6 +156,7 @@ describe('RLS: edição do próprio perfil (profiles_edita_o_proprio)', () => {
       .insert({ name: 'Edição Própria', slug: `edicao-propria-${stamp}` })
       .select('id')
       .single()
+    lixeira.area(area!.id)
 
     const email = `autoedicao-${stamp}@gexcorp.com.br`
     const userId = await createTestUser({
@@ -149,6 +165,7 @@ describe('RLS: edição do próprio perfil (profiles_edita_o_proprio)', () => {
       role: 'member',
       areaId: area!.id,
     })
+    lixeira.usuario(userId)
 
     const asSelf = await authClient(email)
 
@@ -215,6 +232,7 @@ describe('invariante: sempre existe ao menos um admin ativo (profiles_exige_admi
       fullName: 'Admin Solo',
       role: 'admin',
     })
+    lixeira.usuario(soloAdminId)
 
     // Com o admin solo já ativo, sempre sobra ao menos um admin ativo durante
     // a limpeza abaixo — nenhuma dessas desativações esbarra na invariante.
@@ -267,11 +285,13 @@ describe('invariante: sempre existe ao menos um admin ativo (profiles_exige_admi
       // Controle: com um segundo admin ativo, rebaixar o primeiro tem que
       // funcionar — isso é o que prova que o trigger discrimina pela
       // contagem, em vez de bloquear qualquer mudança.
-      await createTestUser({
-        email: `admin-segundo-${stamp}@gexcorp.com.br`,
-        fullName: 'Admin Segundo',
-        role: 'admin',
-      })
+      lixeira.usuario(
+        await createTestUser({
+          email: `admin-segundo-${stamp}@gexcorp.com.br`,
+          fullName: 'Admin Segundo',
+          role: 'admin',
+        }),
+      )
 
       const { error: rebaixarComParError } = await db
         .from('profiles')
@@ -311,11 +331,13 @@ describe('RLS: leitura de profiles (profiles_leitura_propria / _admin / _lider)'
       .insert({ name: 'Leitura A', slug: `leitura-a-${stamp}` })
       .select('id')
       .single()
+    lixeira.area(areaA!.id)
     const { data: areaB } = await db
       .from('areas')
       .insert({ name: 'Leitura B', slug: `leitura-b-${stamp}` })
       .select('id')
       .single()
+    lixeira.area(areaB!.id)
 
     const memberAEmail = `membro-leitura-a-${stamp}@gexcorp.com.br`
     const leaderAEmail = `lider-leitura-a-${stamp}@gexcorp.com.br`
@@ -329,25 +351,29 @@ describe('RLS: leitura de profiles (profiles_leitura_propria / _admin / _lider)'
       role: 'member',
       areaId: areaA!.id,
     })
+    lixeira.usuario(memberAId)
     const leaderAId = await createTestUser({
       email: leaderAEmail,
       fullName: 'Líder Área A',
       role: 'leader',
       areaId: areaA!.id,
     })
+    lixeira.usuario(leaderAId)
     const memberBId = await createTestUser({
       email: memberBEmail,
       fullName: 'Membro Área B',
       role: 'member',
       areaId: areaB!.id,
     })
+    lixeira.usuario(memberBId)
     const leaderBId = await createTestUser({
       email: leaderBEmail,
       fullName: 'Líder Área B',
       role: 'leader',
       areaId: areaB!.id,
     })
-    await createTestUser({ email: adminEmail, fullName: 'Admin Leitura', role: 'admin' })
+    lixeira.usuario(leaderBId)
+    lixeira.usuario(await createTestUser({ email: adminEmail, fullName: 'Admin Leitura', role: 'admin' }))
 
     // Membro: só a própria linha — nunca as de outra pessoa, nem da própria área.
     const asMemberA = await authClient(memberAEmail)
