@@ -48,6 +48,19 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
             className="absolute inset-0 h-full w-full object-cover"
           />
         )}
+        {/*
+          Gradiente que garante leitura do texto sobre qualquer imagem —
+          mesma função e mesmo raciocínio do overlay em area-card.tsx (ver
+          o comentário lá), com os stops próprios desta faixa (88%/50%/20%,
+          não 85%/25%/transparente). Também é a garantia de contraste do
+          degrau 3 da reserva acima (from-azul to-ciano): pior ponto medido
+          em toda a altura é 9,51:1 (a ~72% de distância do fundo) — nunca
+          abaixo de 4,5:1, mesmo no topo, onde este overlay não some de
+          todo (fica em 20%, não transparente): base azul crua já passa
+          sozinha (7,82:1). Se este overlay virar condicional a
+          areaCoverUrl algum dia, o degrau 3 volta a ficar exposto sem
+          nenhum teste avisando — conferir de novo antes.
+        */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/50 to-black/20" />
         <div className="relative flex min-h-36 flex-col justify-end p-6">
           <h1 className="text-2xl font-bold leading-tight text-white">{grupo.areaName}</h1>

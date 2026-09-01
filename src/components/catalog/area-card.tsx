@@ -37,7 +37,25 @@ export function AreaCard({ area }: { area: AreaVitrine }) {
             />
           )}
 
-          {/* Gradiente que garante leitura do texto sobre qualquer imagem. */}
+          {/*
+            Gradiente que garante leitura do texto sobre qualquer imagem.
+            Também é a garantia de contraste do degrau 3 da reserva acima
+            (from-azul to-ciano): a ponta ciano crua (#01cdff) contra texto
+            branco dá 1,88:1 — o MESMO número do bug do Item 1 — mas nunca
+            fica exposta sozinha, porque este overlay é mais forte
+            exatamente onde a base fica mais clara (o gradiente de reserva
+            vai de azul no topo a ciano embaixo; este overlay vai de 85% no
+            fim/embaixo a transparente no topo — as duas trocas de
+            intensidade se cancelam). Pior contraste medido em TODA a
+            altura da capa (não só onde o texto costuma ficar), varrendo
+            ponto a ponto: 5,87:1, exatamente na marca dos 50% (o stop
+            `via-black/25`) — nunca abaixo de 4,5:1, inclusive no topo sem
+            overlay nenhum (azul cru já dá 7,82:1 sozinho). Se este overlay
+            virar condicional a coverUrl algum dia (para não escurecer uma
+            capa que já é escura o bastante, por exemplo), o degrau 3 volta
+            a ficar exposto sem nenhum teste avisando — conferir de novo
+            antes.
+          */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
 
           {area.bloqueada && (
