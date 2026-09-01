@@ -230,36 +230,52 @@ export async function askQuestion(
     // nada. A área do curso é derivada do próprio curso e não é forjável pelo
     // mesmo caminho.
     //
-    // A trilha inicial não tem área (area_id null) — sem área não há líder
-    // de área para avisar, então o envio é pulado (o INSERT acima já
-    // salvou a pergunta de qualquer forma). `.eq('area_id', null)` não seria
-    // "IS NULL" no PostgREST, então o guard abaixo evita depender disso.
+    // A trilha inicial não tem área (area_id null) — e é EXATAMENTE o curso
+    // por onde todo colaborador novo começa, o lugar onde cai a primeira
+    // dúvida da vida dele na empresa. Sem área não há líder de área, mas
+    // "sem líder" não pode virar "sem aviso": cai nos ADMINS ativos, a mesma
+    // consulta que requestAccess já usa para a solicitação de acesso (ver
+    // access-requests.ts). O mesmo fallback vale quando a área TEM líder mas
+    // nenhum está ativo (`status = 'inactive'`) — a lista de líderes vem
+    // vazia e o e-mail não pode simplesmente sumir junto com ela. A pergunta
+    // em si nunca depende disto: o INSERT acima já salvou, e ela aparece na
+    // fila de qualquer admin de qualquer forma (pertenceAFilaDoLider devolve
+    // true para admin) — o que faltava era quem é AVISADO.
+    const admin = createAdminSupabase()
+    let candidatos: { id: string; email: string }[] = []
+
     if (ctx.areaId) {
-      const admin = createAdminSupabase()
       const { data: lideres } = await admin
         .from('profiles')
         .select('id, email')
         .eq('role', 'leader')
         .eq('status', 'active')
         .eq('area_id', ctx.areaId)
+      candidatos = lideres ?? []
+    }
 
-      // Exclusão por id, não por e-mail: e-mail é o campo mais mutável do
-      // perfil (perfil.ts permite trocar o próprio), e comparar por id é
-      // exatamente o dado que já temos em mãos (ctx.user.id).
-      const destinatarios = (lideres ?? [])
-        .filter((l) => l.id !== ctx.user.id)
-        .map((l) => l.email)
+    if (candidatos.length === 0) {
+      const { data: admins } = await admin
+        .from('profiles')
+        .select('id, email')
+        .eq('role', 'admin')
+        .eq('status', 'active')
+      candidatos = admins ?? []
+    }
 
-      if (destinatarios.length > 0) {
-        const conteudo = novaDuvidaEmail({
-          alunoNome: ctx.user.fullName,
-          aulaTitulo: ctx.lessonTitle,
-          cursoTitulo: ctx.courseTitle,
-          pergunta: parsed.data.body,
-          url: `${process.env.NEXT_PUBLIC_SITE_URL}/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`,
-        })
-        await sendEmail({ to: destinatarios, ...conteudo })
-      }
+    // Exclusão por id, não por e-mail: e-mail é o campo mais mutável do
+    // perfil (perfil.ts permite trocar o próprio), e comparar por id é
+    // exatamente o dado que já temos em mãos (ctx.user.id).
+    const destinatarios = candidatos.filter((c) => c.id !== ctx.user.id).map((c) => c.email)
+    if (destinatarios.length > 0) {
+      const conteudo = novaDuvidaEmail({
+        alunoNome: ctx.user.fullName,
+        aulaTitulo: ctx.lessonTitle,
+        cursoTitulo: ctx.courseTitle,
+        pergunta: parsed.data.body,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL}/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`,
+      })
+      await sendEmail({ to: destinatarios, ...conteudo })
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
