@@ -338,16 +338,46 @@ export function CompleteButton({
 
 - [ ] **Step 7: Ligar o progresso às telas existentes**
 
-Em `src/server/catalog.ts`, acrescente o progresso ao tipo e à montagem:
+A fase 2 separou o catálogo em dois módulos: o tipo `CatalogItem`, o mapeador
+`paraCatalogItem` e o agrupador vivem em `src/server/catalog-query.ts` (sem
+`'use server'`, para serem testáveis), e `src/server/catalog.ts` só orquestra as
+consultas. O progresso entra nos dois.
+
+Em **`src/server/catalog-query.ts`**:
 
 ```typescript
-// no topo do arquivo
+// no topo
 import { buildProgress, type CourseProgress } from '@/lib/progress/percent'
 
 // no tipo CatalogItem, acrescente:
 //   progress: CourseProgress
 
-// dentro de getCatalog, some ao Promise.all existente:
+// paraCatalogItem ganha mais um parâmetro, seguindo o padrão de aulasPorCurso:
+export function paraCatalogItem(
+  row: LinhaCatalogo,
+  user: AccessUser,
+  aulasPorCurso: ReadonlyMap<string, number>,
+  concluidasPorCurso: ReadonlyMap<string, number>,
+  liberados: ReadonlySet<string>,
+  pendentes: ReadonlySet<string>,
+): CatalogItem {
+  // ... campos existentes ...
+  progress: buildProgress(
+    concluidasPorCurso.get(row.id) ?? 0,
+    aulasPorCurso.get(row.id) ?? 0,
+  ),
+}
+```
+
+O total vem de `aulasPorCurso`, que já é montado a partir da RPC
+`contar_aulas_publicadas`. **Não volte a contar linhas de `lessons`**: a fase 2
+fechou um vazamento removendo a política que permitia isso, e um join devolveria
+zero para todo curso bloqueado.
+
+Em **`src/server/catalog.ts`**, monte o mapa de concluídas junto das outras
+consultas e passe adiante:
+
+```typescript
 const { data: concluidas } = await supabase
   .from('lesson_progress')
   .select('lesson_id, lessons!inner(course_id)')
@@ -359,14 +389,13 @@ for (const linha of concluidas ?? []) {
   concluidasPorCurso.set(cursoId, (concluidasPorCurso.get(cursoId) ?? 0) + 1)
 }
 
-// e no map que monta cada CatalogItem, acrescente o campo:
-//   progress: buildProgress(
-//     concluidasPorCurso.get(row.id) ?? 0,
-//     aulasPorCurso.get(row.id) ?? 0,
-//   ),
-// (`aulasPorCurso` é o mapa que getCatalog já monta a partir da RPC
-//  contar_aulas_publicadas — não volte a contar linhas de `lessons`.)
+// e na chamada existente:
+paraCatalogItem(row, user, aulasPorCurso, concluidasPorCurso, liberados, pendentes)
 ```
+
+Acrescente um teste em `src/server/catalog-query.test.ts` cobrindo: curso sem
+nenhuma aula concluída, curso parcialmente concluído, e curso bloqueado (onde o
+progresso deve ser zero de zero, porque a pessoa não tem o que concluir).
 
 Em `src/components/catalog/course-card.tsx`, acrescente a barra abaixo do parágrafo de metadados, visível só quando a pessoa tem acesso e o curso tem aulas:
 
