@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { paraForumQuestion, podeGerenciarArea, SELECT_PERGUNTAS, type LinhaPergunta } from '@/server/forum-query'
+import {
+  paraForumQuestion,
+  podeGerenciarArea,
+  SELECT_PERGUNTAS,
+  type LinhaPergunta,
+  type PerfilAutor,
+} from '@/server/forum-query'
 import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 // Prova, contra o Postgres de verdade, as duas coisas que a tarefa do fórum
@@ -7,19 +13,21 @@ import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 //
 // 1. O selo "Professor" (paraForumQuestion/podeGerenciarArea, ambas puras e
 //    já cobertas por src/server/forum-query.test.ts com linhas fabricadas)
-//    continua correto quando alimentada por uma linha REAL, trazida pela
-//    MESMA string de select (SELECT_PERGUNTAS) que listQuestions usa em
-//    produção — inclusive o embed aninhado `answers(...profiles(...))`, que
-//    um teste com dado fabricado não pode confirmar sozinho.
-// 2. Moderação (fixar/resolver/apagar) não depende só da checagem em
-//    JavaScript dentro de forum.ts — RLS (perguntas_edita/perguntas_apaga,
-//    já endurecidas nas fases anteriores, sem migration nova aqui) recusa a
-//    mesma tentativa mesmo que alguém contorne a Server Action e fale
-//    direto com o Postgres. O caso adversarial específico desta tarefa —
-//    líder de OUTRA área com uma liberação AVULSA (course_access) no curso,
-//    ou seja, acesso 'view' real, não 'manage' — não estava coberto em
-//    nenhum teste anterior (rls.test.ts usa um estranho SEM acesso nenhum
-//    para o mesmo cenário); é o que a seção final deste arquivo cobre.
+//    continua correto quando alimentado por uma linha REAL (lida pelo
+//    cliente da SESSÃO, sob RLS — a mesma consulta de listQuestions) e por
+//    perfis REAIS (buscados à parte pela chave de serviço, do jeito que
+//    buscarPerfisAutores faz em produção).
+// 2. Moderação (fixar/resolver/apagar) hoje é sustentada por RLS de
+//    verdade — togglePinned/toggleResolved/deleteQuestion/deleteAnswer
+//    gravam pelo cliente da SESSÃO (rodada de correção 1), então
+//    perguntas_edita/perguntas_apaga/respostas_apaga (endurecidas nas fases
+//    anteriores, sem migration nova aqui) são a MESMA política que a
+//    produção atravessa, não só uma defesa para quem contorna a Server
+//    Action. O caso adversarial específico desta tarefa — líder de OUTRA
+//    área com uma liberação AVULSA (course_access) no curso, ou seja,
+//    acesso 'view' real, não 'manage' — não estava coberto em nenhum teste
+//    anterior (rls.test.ts usa um estranho SEM acesso nenhum para o mesmo
+//    cenário); é o que a seção final deste arquivo cobre.
 //
 // listQuestions/askQuestion/togglePinned etc. em si não são chamáveis fora
 // de um request Next.js de verdade (createServerSupabase() → cookies() →
@@ -172,7 +180,7 @@ describe('askQuestion/answerQuestion — o INSERT que a action faz, respeitando 
   })
 })
 
-describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeamento (paraForumQuestion), com dado real', () => {
+describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS, pelo cliente da sessão) e o MESMO mapeamento, com dado real', () => {
   let perguntaId: string
 
   beforeAll(async () => {
@@ -210,26 +218,46 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeam
     if (erroLeaderD) throw erroLeaderD
   })
 
-  // `listQuestions` (src/server/forum.ts) lê com o cliente ADMIN, não o da
-  // sessão — achado desta própria suíte: `profiles` só libera leitura do
-  // próprio perfil, de admin, ou de líder dentro da própria área
-  // (0001_schema_inicial.sql); um colega comum lendo a pergunta de outra
-  // pessoa não tem NENHUMA política que libere ler o perfil de quem
-  // respondeu, e o embed `profiles(...)` volta null. contextoDaAula() já
-  // confirmou o acesso à AULA antes de chegar aqui (getLessonView, a mesma
-  // regra que perguntas_leitura/respostas_leitura espelham) — por isso este
-  // helper roda com o mesmo cliente admin que a produção usa, não com
-  // authClient(): testar com o cliente da sessão provaria uma consulta que
-  // listQuestions não faz mais.
-  async function buscarPergunta() {
-    const { data, error } = await db.from('questions').select(SELECT_PERGUNTAS).eq('id', perguntaId).single()
+  // `listQuestions` (src/server/forum.ts) lê `questions`/`answers` pelo
+  // cliente da SESSÃO (perguntas_leitura/respostas_leitura sustentam o
+  // conteúdo — rodada de correção 1) e busca os PERFIS dos autores à parte,
+  // pela chave de serviço, restrito aos ids que apareceram — porque
+  // `profiles` não tem política que libere um colega comum ler o perfil de
+  // outra pessoa (0001_schema_inicial.sql). Este par de funções roda
+  // exatamente essas duas consultas, na mesma ordem que a produção usa.
+  async function buscarPergunta(email: string) {
+    const cliente = await authClient(email)
+    const { data, error } = await cliente.from('questions').select(SELECT_PERGUNTAS).eq('id', perguntaId).single()
     if (error) throw error
     return data as unknown as LinhaPergunta
   }
 
+  async function buscarPerfis(linha: LinhaPergunta): Promise<Map<string, PerfilAutor>> {
+    const ids = [linha.author_id, ...linha.answers.map((a) => a.author_id)]
+    const { data } = await db.from('profiles').select('id, full_name, role, area_id, status').in('id', ids)
+    return new Map(
+      (data ?? []).map((p): [string, PerfilAutor] => [
+        p.id,
+        { full_name: p.full_name, role: p.role, area_id: p.area_id, status: p.status },
+      ]),
+    )
+  }
+
+  it('colega de outra área SEM acesso nenhum: a consulta de conteúdo (RLS) não devolve a pergunta — não é só a checagem em JS que barra', async () => {
+    const comoMemberDesign = await authClient(emailMemberDesign)
+    const { data, error } = await comoMemberDesign
+      .from('questions')
+      .select(SELECT_PERGUNTAS)
+      .eq('id', perguntaId)
+      .maybeSingle()
+    expect(error).toBeNull()
+    expect(data).toBeNull()
+  })
+
   it('o selo "Professor" aparece só para admin e para o líder DESTA área — nunca para o líder de outra, mesmo respondendo de verdade', async () => {
-    const linha = await buscarPergunta()
-    const pergunta = paraForumQuestion(linha, memberTrafegoId, false, areaTrafego)
+    const linha = await buscarPergunta(emailMemberTrafego)
+    const perfis = await buscarPerfis(linha)
+    const pergunta = paraForumQuestion(linha, memberTrafegoId, false, areaTrafego, perfis)
 
     const porAutor = new Map(pergunta.answers.map((a) => [a.author.id, a]))
     expect(porAutor.get(adminId)?.author.isInstructor).toBe(true)
@@ -238,22 +266,25 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeam
   })
 
   it('quem pergunta (colega comum) não tem selo nem pode moderar a própria pergunta', async () => {
-    const linha = await buscarPergunta()
-    const pergunta = paraForumQuestion(linha, memberTrafegoId, false, areaTrafego)
+    const linha = await buscarPergunta(emailMemberTrafego)
+    const perfis = await buscarPerfis(linha)
+    const pergunta = paraForumQuestion(linha, memberTrafegoId, false, areaTrafego, perfis)
     expect(pergunta.author.isInstructor).toBe(false)
     expect(pergunta.canEdit).toBe(true)
     expect(pergunta.canModerate).toBe(false)
   })
 
   it('canModerate: true para admin e para o líder de Tráfego; false para o líder de Design, mesmo lendo a mesma pergunta real', async () => {
-    // A linha (real, vinda do banco) é a mesma para todo mundo agora
-    // (listQuestions sempre lê pelo cliente admin); o que muda por pessoa é
-    // só o `podeModerar` que contextoDaAula calcula (podeGerenciarArea) e
-    // passa como parâmetro — exatamente o que este teste varia.
-    const linha = await buscarPergunta()
+    // A linha em si não muda por quem lê (todos os quatro têm acesso real
+    // ao conteúdo); o que muda por pessoa é só o `podeModerar` que
+    // contextoDaAula calcula (podeGerenciarArea) e passa como parâmetro —
+    // exatamente o que este teste varia.
+    const linha = await buscarPergunta(emailAdmin)
+    const perfis = await buscarPerfis(linha)
 
     const canModerateComo = (pessoa: { role: string; areaId: string | null }) =>
-      paraForumQuestion(linha, 'quem-esta-vendo', podeGerenciarArea(pessoa, areaTrafego), areaTrafego).canModerate
+      paraForumQuestion(linha, 'quem-esta-vendo', podeGerenciarArea(pessoa, areaTrafego), areaTrafego, perfis)
+        .canModerate
 
     expect(canModerateComo({ role: 'admin', areaId: null })).toBe(true)
     expect(canModerateComo({ role: 'leader', areaId: areaTrafego })).toBe(true)
@@ -261,8 +292,9 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeam
   })
 
   it('respostas vêm ordenadas por created_at, não pela ordem de chegada do banco', async () => {
-    const linha = await buscarPergunta()
-    const pergunta = paraForumQuestion(linha, adminId, true, areaTrafego)
+    const linha = await buscarPergunta(emailAdmin)
+    const perfis = await buscarPerfis(linha)
+    const pergunta = paraForumQuestion(linha, adminId, true, areaTrafego, perfis)
     const criadas = pergunta.answers.map((a) => a.createdAt)
     expect([...criadas].sort()).toEqual(criadas)
   })
@@ -271,44 +303,53 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeam
   // O caso adversarial central da tarefa: um líder de OUTRA área com
   // liberação avulsa (course_access) consegue LER e RESPONDER (acesso
   // 'view' real, testado acima), mas RLS recusa qualquer tentativa de
-  // moderar a pergunta de outra pessoa — mesmo sem passar pela Server
-  // Action. perguntas_edita/perguntas_apaga (endurecidas nas fases
-  // anteriores, sem migration nova aqui) são o que barra isto; a checagem
-  // em JavaScript (podeGerenciarArea, provada acima) é a SEGUNDA camada, não
-  // a única.
+  // moderar a pergunta de outra pessoa — pelo MESMO caminho que a produção
+  // usa agora (togglePinned/toggleResolved/deleteQuestion gravam pelo
+  // cliente da sessão desde a rodada de correção 1), não só para quem
+  // contorna a Server Action. perguntas_edita/perguntas_apaga (endurecidas
+  // nas fases anteriores, sem migration nova aqui) são o que barra isto; a
+  // checagem em JavaScript (podeGerenciarArea, provada acima) é a PRIMEIRA
+  // camada, não a única — e o `.select('id')` em cada tentativa abaixo
+  // mostra o mecanismo exato que forum.ts usa para perceber a recusa: zero
+  // linhas devolvidas, sem erro nenhum.
   // ---------------------------------------------------------------------
-  it('líder de outra área, com acesso avulso: RLS recusa fixar, resolver e apagar a pergunta alheia', async () => {
+  it('líder de outra área, com acesso avulso: RLS recusa fixar, resolver e apagar a pergunta alheia (zero linhas, sem erro)', async () => {
     const comoLeaderDesign = await authClient(emailLeaderDesign)
 
-    // PostgREST devolve 0 linhas afetadas (sem erro) quando o WITH CHECK
-    // barra a escrita — a prova real é o estado no banco, checado logo
-    // depois de cada tentativa, não o retorno da chamada em si.
-    await comoLeaderDesign.from('questions').update({ is_pinned: true }).eq('id', perguntaId)
+    const fixar = await comoLeaderDesign.from('questions').update({ is_pinned: true }).eq('id', perguntaId).select('id')
+    expect(fixar.error).toBeNull()
+    expect(fixar.data).toEqual([])
     const { data: aposFixar } = await db.from('questions').select('is_pinned').eq('id', perguntaId).single()
     expect(aposFixar!.is_pinned).toBe(false)
 
-    await comoLeaderDesign.from('questions').update({ resolved_at: new Date().toISOString() }).eq('id', perguntaId)
+    const resolver = await comoLeaderDesign
+      .from('questions')
+      .update({ resolved_at: new Date().toISOString() })
+      .eq('id', perguntaId)
+      .select('id')
+    expect(resolver.error).toBeNull()
+    expect(resolver.data).toEqual([])
     const { data: aposResolver } = await db.from('questions').select('resolved_at').eq('id', perguntaId).single()
     expect(aposResolver!.resolved_at).toBeNull()
 
-    await comoLeaderDesign.from('questions').delete().eq('id', perguntaId)
+    const apagar = await comoLeaderDesign.from('questions').delete().eq('id', perguntaId).select('id')
+    expect(apagar.error).toBeNull()
+    expect(apagar.data).toEqual([])
     const { data: aindaExiste } = await db.from('questions').select('id').eq('id', perguntaId)
     expect(aindaExiste).toHaveLength(1)
 
     // Controle: quem realmente gerencia (líder de Tráfego) consegue fixar a
-    // mesma pergunta — mostra que a recusa acima é por ÁREA, não porque a
-    // política bloqueia todo mundo.
+    // mesma pergunta, e a chamada devolve a linha — mostra que a recusa
+    // acima é por ÁREA, não porque a política bloqueia todo mundo.
     const comoLeaderTrafego = await authClient(emailLeaderTrafego)
-    const { error: erroControle } = await comoLeaderTrafego
-      .from('questions')
-      .update({ is_pinned: true })
-      .eq('id', perguntaId)
-    expect(erroControle).toBeNull()
+    const controle = await comoLeaderTrafego.from('questions').update({ is_pinned: true }).eq('id', perguntaId).select('id')
+    expect(controle.error).toBeNull()
+    expect(controle.data).toHaveLength(1)
     const { data: aposControle } = await db.from('questions').select('is_pinned').eq('id', perguntaId).single()
     expect(aposControle!.is_pinned).toBe(true)
   })
 
-  it('líder de outra área, com acesso avulso: apaga a PRÓPRIA resposta, mas não a alheia', async () => {
+  it('líder de outra área, com acesso avulso: apaga a PRÓPRIA resposta (zero linhas na alheia, sem erro)', async () => {
     const comoLeaderDesign = await authClient(emailLeaderDesign)
     const { data: respostaAlheia } = await db
       .from('answers')
@@ -317,7 +358,9 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeam
       .eq('author_id', leaderTrafegoId)
       .single()
 
-    await comoLeaderDesign.from('answers').delete().eq('id', respostaAlheia!.id)
+    const apagarAlheia = await comoLeaderDesign.from('answers').delete().eq('id', respostaAlheia!.id).select('id')
+    expect(apagarAlheia.error).toBeNull()
+    expect(apagarAlheia.data).toEqual([])
     const { data: alheiaAindaExiste } = await db.from('answers').select('id').eq('id', respostaAlheia!.id)
     expect(alheiaAindaExiste).toHaveLength(1)
 
@@ -327,8 +370,9 @@ describe('listQuestions — a MESMA consulta (SELECT_PERGUNTAS) e o MESMO mapeam
       .eq('question_id', perguntaId)
       .eq('author_id', leaderDesignId)
       .single()
-    const { error: erroApagarPropria } = await comoLeaderDesign.from('answers').delete().eq('id', respostaPropria!.id)
-    expect(erroApagarPropria).toBeNull()
+    const apagarPropria = await comoLeaderDesign.from('answers').delete().eq('id', respostaPropria!.id).select('id')
+    expect(apagarPropria.error).toBeNull()
+    expect(apagarPropria.data).toHaveLength(1)
     const { data: propriaSumiu } = await db.from('answers').select('id').eq('id', respostaPropria!.id)
     expect(propriaSumiu).toHaveLength(0)
   })

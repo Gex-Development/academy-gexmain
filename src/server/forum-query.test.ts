@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { paraForumQuestion, podeGerenciarArea, type LinhaPergunta } from './forum-query'
+import { paraForumQuestion, podeGerenciarArea, type LinhaPergunta, type PerfilAutor } from './forum-query'
 
 const AREA_TRAFEGO = 'area-trafego'
 const AREA_DESIGN = 'area-design'
@@ -45,94 +45,123 @@ function linha(over: Partial<LinhaPergunta> = {}): LinhaPergunta {
     resolved_at: null,
     created_at: '2026-08-31T10:00:00Z',
     author_id: 'colega-1',
-    profiles: { full_name: 'Colega Um', role: 'member', area_id: AREA_TRAFEGO },
     answers: [],
     ...over,
   }
 }
 
+function perfis(entradas: Record<string, PerfilAutor>): Map<string, PerfilAutor> {
+  return new Map(Object.entries(entradas))
+}
+
+const COLEGA_1: PerfilAutor = { full_name: 'Colega Um', role: 'member', area_id: AREA_TRAFEGO, status: 'active' }
+
 describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linha do banco', () => {
   it('autor admin ganha o selo "Professor", mesmo fora da área do curso', () => {
     const pergunta = paraForumQuestion(
-      linha({ profiles: { full_name: 'Admin', role: 'admin', area_id: null } }),
+      linha({ author_id: 'admin-1' }),
       'outra-pessoa',
       false,
       AREA_TRAFEGO,
+      perfis({ 'admin-1': { full_name: 'Admin', role: 'admin', area_id: null, status: 'active' } }),
     )
     expect(pergunta.author.isInstructor).toBe(true)
   })
 
   it('autor líder DESTA área ganha o selo', () => {
     const pergunta = paraForumQuestion(
-      linha({ profiles: { full_name: 'Líder Tráfego', role: 'leader', area_id: AREA_TRAFEGO } }),
+      linha({ author_id: 'lider-t' }),
       'outra-pessoa',
       false,
       AREA_TRAFEGO,
+      perfis({ 'lider-t': { full_name: 'Líder Tráfego', role: 'leader', area_id: AREA_TRAFEGO, status: 'active' } }),
     )
     expect(pergunta.author.isInstructor).toBe(true)
   })
 
   it('autor líder de OUTRA área não ganha o selo neste curso', () => {
     const pergunta = paraForumQuestion(
-      linha({ profiles: { full_name: 'Líder Design', role: 'leader', area_id: AREA_DESIGN } }),
+      linha({ author_id: 'lider-d' }),
       'outra-pessoa',
       false,
       AREA_TRAFEGO,
+      perfis({ 'lider-d': { full_name: 'Líder Design', role: 'leader', area_id: AREA_DESIGN, status: 'active' } }),
     )
     expect(pergunta.author.isInstructor).toBe(false)
   })
 
   it('autor colega comum nunca ganha o selo', () => {
-    const pergunta = paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO)
+    const pergunta = paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO, perfis({ 'colega-1': COLEGA_1 }))
     expect(pergunta.author.isInstructor).toBe(false)
   })
 
-  it('perfil ausente (autor removido): nome de reserva, sem selo', () => {
-    const pergunta = paraForumQuestion(linha({ profiles: null }), 'outra-pessoa', false, AREA_TRAFEGO)
+  it('líder DESTA área, mas DESATIVADO: perde o selo — autoridade é do estado atual, não do que era quando publicou', () => {
+    const pergunta = paraForumQuestion(
+      linha({ author_id: 'lider-t-inativo' }),
+      'outra-pessoa',
+      false,
+      AREA_TRAFEGO,
+      perfis({
+        'lider-t-inativo': { full_name: 'Ex-líder Tráfego', role: 'leader', area_id: AREA_TRAFEGO, status: 'inactive' },
+      }),
+    )
+    expect(pergunta.author.isInstructor).toBe(false)
+    // Controle: o mesmo perfil, ativo, ganharia o selo — a diferença é só o status.
+    const ativo = paraForumQuestion(
+      linha({ author_id: 'lider-t-ativo' }),
+      'outra-pessoa',
+      false,
+      AREA_TRAFEGO,
+      perfis({
+        'lider-t-ativo': { full_name: 'Líder Tráfego', role: 'leader', area_id: AREA_TRAFEGO, status: 'active' },
+      }),
+    )
+    expect(ativo.author.isInstructor).toBe(true)
+  })
+
+  it('perfil ausente do Map (não deveria acontecer — cascade delete): nome de reserva, sem selo', () => {
+    const pergunta = paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO, perfis({}))
     expect(pergunta.author.name).toBe('Colaborador')
     expect(pergunta.author.isInstructor).toBe(false)
   })
 
   it('canEdit é true só para quem fez a pergunta', () => {
-    expect(paraForumQuestion(linha(), 'colega-1', false, AREA_TRAFEGO).canEdit).toBe(true)
-    expect(paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO).canEdit).toBe(false)
+    const p = perfis({ 'colega-1': COLEGA_1 })
+    expect(paraForumQuestion(linha(), 'colega-1', false, AREA_TRAFEGO, p).canEdit).toBe(true)
+    expect(paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO, p).canEdit).toBe(false)
   })
 
   it('canModerate reflete o parâmetro recebido, igual para toda pergunta da lista', () => {
-    expect(paraForumQuestion(linha(), 'outra-pessoa', true, AREA_TRAFEGO).canModerate).toBe(true)
-    expect(paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO).canModerate).toBe(false)
+    const p = perfis({ 'colega-1': COLEGA_1 })
+    expect(paraForumQuestion(linha(), 'outra-pessoa', true, AREA_TRAFEGO, p).canModerate).toBe(true)
+    expect(paraForumQuestion(linha(), 'outra-pessoa', false, AREA_TRAFEGO, p).canModerate).toBe(false)
   })
 
   it('resolved reflete resolved_at ser nulo ou não', () => {
-    expect(paraForumQuestion(linha(), 'x', false, AREA_TRAFEGO).resolved).toBe(false)
-    expect(paraForumQuestion(linha({ resolved_at: '2026-08-31T11:00:00Z' }), 'x', false, AREA_TRAFEGO).resolved).toBe(
-      true,
-    )
+    const p = perfis({ 'colega-1': COLEGA_1 })
+    expect(paraForumQuestion(linha(), 'x', false, AREA_TRAFEGO, p).resolved).toBe(false)
+    expect(
+      paraForumQuestion(linha({ resolved_at: '2026-08-31T11:00:00Z' }), 'x', false, AREA_TRAFEGO, p).resolved,
+    ).toBe(true)
   })
 
   it('respostas: ordenadas por created_at, não pela ordem de chegada da linha', () => {
+    const p = perfis({
+      'colega-1': COLEGA_1,
+      x: { full_name: 'X', role: 'member', area_id: AREA_TRAFEGO, status: 'active' },
+      y: { full_name: 'Y', role: 'member', area_id: AREA_TRAFEGO, status: 'active' },
+    })
     const pergunta = paraForumQuestion(
       linha({
         answers: [
-          {
-            id: 'a2',
-            body: 'Segunda resposta',
-            created_at: '2026-08-31T12:00:00Z',
-            author_id: 'x',
-            profiles: { full_name: 'X', role: 'member', area_id: AREA_TRAFEGO },
-          },
-          {
-            id: 'a1',
-            body: 'Primeira resposta',
-            created_at: '2026-08-31T11:00:00Z',
-            author_id: 'y',
-            profiles: { full_name: 'Y', role: 'member', area_id: AREA_TRAFEGO },
-          },
+          { id: 'a2', body: 'Segunda resposta', created_at: '2026-08-31T12:00:00Z', author_id: 'x' },
+          { id: 'a1', body: 'Primeira resposta', created_at: '2026-08-31T11:00:00Z', author_id: 'y' },
         ],
       }),
       'z',
       false,
       AREA_TRAFEGO,
+      p,
     )
     expect(pergunta.answers.map((a) => a.id)).toEqual(['a1', 'a2'])
   })
@@ -143,10 +172,13 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       body: 'Resp',
       created_at: '2026-08-31T11:00:00Z',
       author_id: autorId,
-      profiles: { full_name: 'Alguém', role: 'member' as const, area_id: AREA_TRAFEGO },
+    })
+    const p = perfis({
+      'colega-1': COLEGA_1,
+      'resp-1': { full_name: 'Alguém', role: 'member', area_id: AREA_TRAFEGO, status: 'active' },
     })
 
-    const comoAutor = paraForumQuestion(linha({ answers: [respostaDe('resp-1')] }), 'resp-1', false, AREA_TRAFEGO)
+    const comoAutor = paraForumQuestion(linha({ answers: [respostaDe('resp-1')] }), 'resp-1', false, AREA_TRAFEGO, p)
     expect(comoAutor.answers[0]!.canEdit).toBe(true)
 
     const comoModerador = paraForumQuestion(
@@ -154,6 +186,7 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       'outra-pessoa',
       true,
       AREA_TRAFEGO,
+      p,
     )
     expect(comoModerador.answers[0]!.canEdit).toBe(true)
 
@@ -162,6 +195,7 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       'outra-pessoa',
       false,
       AREA_TRAFEGO,
+      p,
     )
     expect(comoTerceiro.answers[0]!.canEdit).toBe(false)
   })

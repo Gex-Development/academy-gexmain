@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { getCurrentUser } from '@/lib/auth/session'
 import { novaDuvidaEmail, respostaDuvidaEmail, sendEmail } from '@/lib/email'
-import { excedeuLimite } from '@/lib/forum/rate-limit'
+import { excedeuLimite, JANELA_MINUTOS } from '@/lib/forum/rate-limit'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import {
@@ -14,6 +14,8 @@ import {
   type ForumAnswer,
   type ForumQuestion,
   type LinhaPergunta,
+  type PerfilAutor,
+  type PerfisPorId,
 } from './forum-query'
 import { ok, toActionError, type ActionResult } from './result'
 import { getLessonView } from './viewer'
@@ -75,10 +77,10 @@ async function contextoDaAula(lessonId: string) {
 
 type ContextoDaAula = NonNullable<Awaited<ReturnType<typeof contextoDaAula>>>
 
-/** Publicações da pessoa nos últimos minutos, para o limite de abuso. */
+/** Publicações da pessoa dentro da janela do limite de abuso. */
 async function publicacoesRecentes(userId: string): Promise<Date[]> {
   const admin = createAdminSupabase()
-  const desde = new Date(Date.now() - 60 * 60_000).toISOString()
+  const desde = new Date(Date.now() - JANELA_MINUTOS * 60_000).toISOString()
 
   const [perguntas, respostas] = await Promise.all([
     admin.from('questions').select('created_at').eq('author_id', userId).gte('created_at', desde),
@@ -94,6 +96,36 @@ const corpoSchema = z
   .min(1, 'Escreva sua mensagem.')
   .max(4000, 'A mensagem passa de 4000 caracteres.')
 
+/**
+ * Perfis (nome, papel, área, status) dos autores de um conjunto de linhas,
+ * por id — a segunda metade da leitura que listQuestions faz.
+ *
+ * `profiles` não tem política de leitura que libere um colega comum ver o
+ * perfil de outra pessoa (0001_schema_inicial.sql: só o próprio, admin, ou
+ * líder dentro da própria área) — é a primeira tela do produto que precisa
+ * disso (nenhuma outra já exibia o nome de um terceiro pela sessão do
+ * usuário comum). Por isso esta busca usa a chave de serviço, mas SÓ para
+ * projetar (id, full_name, role, area_id, status) — nunca e-mail nem outra
+ * coluna — e restrita aos ids que realmente apareceram na listagem que o
+ * cliente da SESSÃO já trouxe (essa, sim, sob RLS). O conteúdo do fórum
+ * continua sustentado por perguntas_leitura/respostas_leitura; isto resolve
+ * só os nomes.
+ */
+async function buscarPerfisAutores(ids: ReadonlySet<string>): Promise<PerfisPorId> {
+  if (ids.size === 0) return new Map()
+
+  const admin = createAdminSupabase()
+  const { data } = await admin
+    .from('profiles')
+    .select('id, full_name, role, area_id, status')
+    .in('id', [...ids])
+
+  return new Map((data ?? []).map((p): [string, PerfilAutor] => [
+    p.id,
+    { full_name: p.full_name, role: p.role, area_id: p.area_id, status: p.status },
+  ]))
+}
+
 /** Perguntas e respostas de uma aula, prontas para a tela. */
 export async function listQuestions(lessonId: string): Promise<ForumQuestion[]> {
   const idValido = z.string().uuid().safeParse(lessonId)
@@ -102,31 +134,31 @@ export async function listQuestions(lessonId: string): Promise<ForumQuestion[]> 
   const ctx = await contextoDaAula(idValido.data)
   if (!ctx) return []
 
-  // Cliente ADMIN de propósito, não o cliente da sessão: `profiles` só tem
-  // política de leitura para o próprio perfil, para admin, e para líder
-  // dentro da própria área (0001_schema_inicial.sql) — um colega comum (a
-  // maioria de quem pergunta) não tem NENHUMA política que libere ler o
-  // perfil de quem respondeu. Sem isso, o embed `profiles(...)` de
-  // question/answers volta null para todo autor que não seja a própria
-  // pessoa logada, e author.name cai sempre no rótulo de reserva
-  // ("Colaborador") e isInstructor sempre falso para qualquer autor que não
-  // seja quem está olhando — confirmado empiricamente em
-  // tests/db/forum.test.ts antes desta linha existir. contextoDaAula() já
-  // confirmou o acesso a ESTA aula (getLessonView, a mesma regra que
-  // perguntas_leitura/respostas_leitura espelham) antes deste ponto — é
-  // seguro ler com o cliente admin, pois a decisão de "pode ver este
-  // fórum" já foi tomada; o que falta é só enxergar os nomes.
-  const admin = createAdminSupabase()
-  const { data } = await admin
+  // Cliente da SESSÃO, não o admin: perguntas_leitura/respostas_leitura
+  // sustentam o CONTEÚDO exatamente como em todo outro lugar do projeto
+  // (o precedente mais próximo é listAttachments, em attachments.ts) — se
+  // um dia a checagem de acesso em contextoDaAula tiver um bug, RLS continua
+  // sendo a segunda camada. SELECT_PERGUNTAS não inclui `profiles(...)` (ver
+  // o comentário lá): os nomes vêm à parte, por buscarPerfisAutores.
+  const supabase = await createServerSupabase()
+  const { data } = await supabase
     .from('questions')
     .select(SELECT_PERGUNTAS)
     .eq('lesson_id', ctx.lessonId)
     .order('is_pinned', { ascending: false })
     .order('created_at', { ascending: false })
 
-  return ((data ?? []) as unknown as LinhaPergunta[]).map((row) =>
-    paraForumQuestion(row, ctx.user.id, ctx.podeModerar, ctx.areaId),
-  )
+  const linhas = (data ?? []) as unknown as LinhaPergunta[]
+  if (linhas.length === 0) return []
+
+  const autorIds = new Set<string>()
+  for (const pergunta of linhas) {
+    autorIds.add(pergunta.author_id)
+    for (const resposta of pergunta.answers) autorIds.add(resposta.author_id)
+  }
+  const perfis = await buscarPerfisAutores(autorIds)
+
+  return linhas.map((row) => paraForumQuestion(row, ctx.user.id, ctx.podeModerar, ctx.areaId, perfis))
 }
 
 export async function askQuestion(
@@ -173,14 +205,17 @@ export async function askQuestion(
       const admin = createAdminSupabase()
       const { data: lideres } = await admin
         .from('profiles')
-        .select('email')
+        .select('id, email')
         .eq('role', 'leader')
         .eq('status', 'active')
         .eq('area_id', ctx.areaId)
 
+      // Exclusão por id, não por e-mail: e-mail é o campo mais mutável do
+      // perfil (perfil.ts permite trocar o próprio), e comparar por id é
+      // exatamente o dado que já temos em mãos (ctx.user.id).
       const destinatarios = (lideres ?? [])
+        .filter((l) => l.id !== ctx.user.id)
         .map((l) => l.email)
-        .filter((email) => email !== ctx.user.email)
 
       if (destinatarios.length > 0) {
         const conteudo = novaDuvidaEmail({
@@ -258,10 +293,24 @@ export async function answerQuestion(
  * Ações de moderação (fixar/resolver, sempre restritas a quem modera) e
  * exclusão de pergunta (autor OU quem modera), todas checando quem pode o
  * quê contra ESTE recurso antes de mexer em qualquer linha.
+ *
+ * `operacao` recebe o cliente da SESSÃO (não o admin) e devolve se a escrita
+ * realmente afetou uma linha. Isso importa porque, com o cliente da sessão,
+ * uma recusa de RLS não chega como erro — chega como zero linhas afetadas.
+ * A checagem de `autorizado` já filtra a esmagadora maioria dos casos antes
+ * de chegar aqui, mas ela é código de aplicação; RLS (perguntas_edita/
+ * perguntas_apaga, endurecidas nas fases anteriores) é quem sustenta a
+ * escrita de verdade agora, e se algum dia a checagem acima tiver um bug,
+ * `sucesso: false` é o sinal de que o banco recusou mesmo assim — sem isso,
+ * a tela diria "resolvido" numa ação que o banco não fez.
  */
 async function moderar(
   formData: FormData,
-  operacao: (ctx: ContextoDaAula, questionId: string) => Promise<void>,
+  operacao: (
+    ctx: ContextoDaAula,
+    questionId: string,
+    supabase: Awaited<ReturnType<typeof createServerSupabase>>,
+  ) => Promise<boolean>,
   exigeModeracao: boolean,
 ): Promise<ActionResult<null>> {
   const id = z.string().uuid().safeParse(formData.get('questionId'))
@@ -283,7 +332,10 @@ async function moderar(
     : ctx.podeModerar || pergunta.author_id === ctx.user.id
   if (!autorizado) return { ok: false, error: 'Você não tem permissão para esta ação.' }
 
-  await operacao(ctx, id.data)
+  const supabase = await createServerSupabase()
+  const sucesso = await operacao(ctx, id.data, supabase)
+  if (!sucesso) return { ok: false, error: 'Você não tem permissão para esta ação.' }
+
   revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
   return ok(null)
 }
@@ -292,10 +344,22 @@ export async function togglePinned(_prev: unknown, formData: FormData): Promise<
   try {
     return await moderar(
       formData,
-      async (_ctx, questionId) => {
-        const admin = createAdminSupabase()
-        const { data } = await admin.from('questions').select('is_pinned').eq('id', questionId).single()
-        await admin.from('questions').update({ is_pinned: !data!.is_pinned }).eq('id', questionId)
+      async (_ctx, questionId, supabase) => {
+        const { data: atual, error: erroLeitura } = await supabase
+          .from('questions')
+          .select('is_pinned')
+          .eq('id', questionId)
+          .maybeSingle()
+        if (erroLeitura) throw erroLeitura
+        if (!atual) return false
+
+        const { data, error } = await supabase
+          .from('questions')
+          .update({ is_pinned: !atual.is_pinned })
+          .eq('id', questionId)
+          .select('id')
+        if (error) throw error
+        return (data?.length ?? 0) > 0
       },
       true,
     )
@@ -308,13 +372,22 @@ export async function toggleResolved(_prev: unknown, formData: FormData): Promis
   try {
     return await moderar(
       formData,
-      async (_ctx, questionId) => {
-        const admin = createAdminSupabase()
-        const { data } = await admin.from('questions').select('resolved_at').eq('id', questionId).single()
-        await admin
+      async (_ctx, questionId, supabase) => {
+        const { data: atual, error: erroLeitura } = await supabase
           .from('questions')
-          .update({ resolved_at: data!.resolved_at ? null : new Date().toISOString() })
+          .select('resolved_at')
           .eq('id', questionId)
+          .maybeSingle()
+        if (erroLeitura) throw erroLeitura
+        if (!atual) return false
+
+        const { data, error } = await supabase
+          .from('questions')
+          .update({ resolved_at: atual.resolved_at ? null : new Date().toISOString() })
+          .eq('id', questionId)
+          .select('id')
+        if (error) throw error
+        return (data?.length ?? 0) > 0
       },
       true,
     )
@@ -327,9 +400,10 @@ export async function deleteQuestion(_prev: unknown, formData: FormData): Promis
   try {
     return await moderar(
       formData,
-      async (_ctx, questionId) => {
-        const admin = createAdminSupabase()
-        await admin.from('questions').delete().eq('id', questionId)
+      async (_ctx, questionId, supabase) => {
+        const { data, error } = await supabase.from('questions').delete().eq('id', questionId).select('id')
+        if (error) throw error
+        return (data?.length ?? 0) > 0
       },
       false,
     )
@@ -359,7 +433,17 @@ export async function deleteAnswer(_prev: unknown, formData: FormData): Promise<
       return { ok: false, error: 'Você não tem permissão para esta ação.' }
     }
 
-    await admin.from('answers').delete().eq('id', id.data)
+    // Cliente da sessão: respostas_apaga (autor OU quem gerencia o curso) é
+    // quem sustenta esta exclusão agora — mesmo raciocínio de moderar(), só
+    // que deleteAnswer não usa esse helper (a permissão de apagar resposta
+    // não depende de "ser a pergunta", então nunca compartilhou o helper).
+    const supabase = await createServerSupabase()
+    const { data, error } = await supabase.from('answers').delete().eq('id', id.data).select('id')
+    if (error) throw error
+    if (!data || data.length === 0) {
+      return { ok: false, error: 'Você não tem permissão para esta ação.' }
+    }
+
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
     return ok(null)
   } catch (error) {
