@@ -23,9 +23,9 @@ Preencha `.env.local` com os valores do painel do Supabase (Project Settings):
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API | Só servidor — **nunca** prefixar com `NEXT_PUBLIC_`, nunca expor ao navegador |
 | `SUPABASE_PROJECT_REF` | Project Settings → General ("Reference ID") | Só `scripts/db.mjs` (`db:push`/`db:reset`/`db:types`), para montar a connection string direta com o Postgres |
 | `SUPABASE_DB_PASSWORD` | Project Settings → Database | Idem — senha do Postgres do projeto |
-| `RESEND_API_KEY` | — | Reservado para fase futura de notificações por e-mail fora do fluxo de Auth |
-| `EMAIL_FROM` | — | Idem |
-| `NEXT_PUBLIC_SITE_URL` | — | Base usada para montar links de convite/recuperação de senha |
+| `RESEND_API_KEY` | Painel do [Resend](https://resend.com) → API Keys | **Obrigatório.** Envia os e-mails de dúvida nova, resposta e solicitação de acesso (fórum e aprovação, fase 3). Sem ela `sendEmail` degrada em `console.warn` — nunca derruba a ação, mas também nenhum desses e-mails sai, sem erro nenhum em lugar nenhum |
+| `EMAIL_FROM` | Domínio verificado no painel do Resend | Idem — endereço remetente dos e-mails acima |
+| `NEXT_PUBLIC_SITE_URL` | — | **Obrigatório.** Base usada para montar o link de TODO e-mail transacional: convite, recuperação de senha (via Supabase Auth) e, desde a fase 3, dúvida nova, resposta e solicitação de acesso (via `src/lib/email/`) |
 
 `.env.local` nunca é commitado (está no `.gitignore`).
 
@@ -123,7 +123,7 @@ O SMTP embutido do Supabase (usado enquanto não houver um provedor próprio con
 - `src/lib/access/` — regras puras de autorização de conteúdo (quem pode ver qual curso). **Mudar este código sem mudar as políticas RLS correspondentes (nas migrations de `supabase/migrations/`) na mesma alteração deixa as duas camadas divergentes** — uma delas vira a fonte de verdade errada.
 - `src/lib/auth/` — sessão atual (`session.ts`), guarda de papel (`guards.ts`) e lista de rotas públicas (`public-routes.ts`), usada tanto pelo proxy (`src/proxy.ts`) quanto pelos layouts.
 - `src/lib/video/` — interpreta link do YouTube e código do VTurb para montar o player da aula.
-- `src/lib/email/` — templates e envio pelo Resend (convite, recuperação de senha, dúvida nova, resposta, solicitação de acesso). `send.ts` nunca lança: uma falha de envio vira log, não erro na tela.
+- `src/lib/email/` — templates e envio pelo Resend: dúvida nova, resposta e solicitação/decisão de acesso (fase 3). **Não** cobre convite nem recuperação de senha — esses dois saem pelo Supabase Auth (Email Templates no painel, ver seção acima), não por aqui. `send.ts` nunca lança: uma falha de envio vira log, não erro na tela.
 - `src/server/` — server actions. Toda função exportada de um arquivo `'use server'` é um endpoint chamável por qualquer sessão (mesmo sem link nenhum apontando para ela) — cada uma valida entrada com Zod, confere papel e nunca lança para a tela (retorna `ActionResult<T>`).
 - `supabase/migrations/` — única fonte de verdade do schema e das políticas RLS. Aplicadas com `npm run db:push`; nunca editadas depois de já aplicadas — uma correção vira uma migration nova.
 
