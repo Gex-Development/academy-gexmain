@@ -46,13 +46,17 @@ describe('restrições do schema', () => {
   })
 
   it('permite apenas uma trilha inicial na plataforma', async () => {
-    const first = await db.from('courses').insert({
-      title: 'Trilha Inicial',
-      slug: `trilha-a-${Date.now()}`,
-      is_onboarding: true,
-      area_id: null,
-      owner_id: ownerId,
-    })
+    const first = await db
+      .from('courses')
+      .insert({
+        title: 'Trilha Inicial',
+        slug: `trilha-a-${Date.now()}`,
+        is_onboarding: true,
+        area_id: null,
+        owner_id: ownerId,
+      })
+      .select('id')
+      .single()
     expect(first.error).toBeNull()
 
     const { error } = await db.from('courses').insert({
@@ -64,8 +68,11 @@ describe('restrições do schema', () => {
     })
     expect(error?.message).toContain('courses_uma_trilha_inicial')
 
-    // Libera o índice único para os testes seguintes deste arquivo.
-    await db.from('courses').delete().like('slug', 'trilha-a-%')
+    // Libera o índice único para os testes seguintes deste arquivo. Apaga
+    // pelo id exato criado aqui, não por `like 'trilha-a-%'`: o banco de
+    // desenvolvimento é remoto e compartilhado, e um padrão `like` alcançaria
+    // linhas criadas por outras execuções concorrentes deste mesmo teste.
+    await db.from('courses').delete().eq('id', first.data!.id)
   })
 
   it('recusa papel fora da lista permitida', async () => {
@@ -120,31 +127,57 @@ describe('restrições do schema', () => {
 describe('RLS: ativação da própria conta (profiles_ativa_a_si)', () => {
   it('recusa ativação que também muda role, area_id ou email; permite ativação simples', async () => {
     const stamp = Date.now()
+
+    // Área real (não null) para o pin de area_id ser um teste de verdade:
+    // com area_id já null, uma tentativa de "mudar" para null não mudaria
+    // nada e passaria por acidente, sem provar que a coluna está fixada.
+    const { data: area } = await db
+      .from('areas')
+      .insert({ name: 'Ativação Própria', slug: `ativacao-propria-${stamp}` })
+      .select('id')
+      .single()
+
     const email = `convidado-${stamp}@gexcorp.com.br`
     const userId = await createTestUser({
       email,
       fullName: 'Convidado de Teste',
       role: 'member',
+      areaId: area!.id,
       status: 'invited',
     })
 
     const asInvitedUser = await authClient(email)
 
-    const tentativaDeEscalada = await asInvitedUser
-      .from('profiles')
-      .update({ status: 'active', role: 'admin' })
-      .eq('id', userId)
-    expect(tentativaDeEscalada.error).not.toBeNull()
+    // Cada tentativa isolada, para provar que cada coluna fixada barra
+    // sozinha — não só a combinação delas. Mesmo padrão do vetor `tentativas`
+    // em tests/db/people.test.ts ("RLS: edição do próprio perfil"), aplicado
+    // aqui ao caminho de ativação: antes só o vetor `role` era exercitado
+    // aqui, apesar do WITH CHECK de profiles_ativa_a_si (0001) também fixar
+    // area_id e email.
+    const tentativas = [
+      { status: 'active', role: 'admin' },
+      { status: 'active', area_id: null },
+      { status: 'active', email: `sequestrado-${stamp}@gexcorp.com.br` },
+    ] as const
+
+    for (const alteracao of tentativas) {
+      const { error } = await asInvitedUser.from('profiles').update(alteracao).eq('id', userId)
+      expect(error, `deveria recusar a alteração ${JSON.stringify(alteracao)}`).not.toBeNull()
+    }
 
     // WITH CHECK falhando derruba o UPDATE inteiro: a linha continua intocada.
-    const { data: aindaConvidado, error: leituraError } = await adminClient()
+    const { data: aindaConvidado, error: leituraError } = await db
       .from('profiles')
-      .select('status, role')
+      .select('status, role, area_id, email')
       .eq('id', userId)
       .single()
     if (leituraError) throw leituraError
-    expect(aindaConvidado?.status).toBe('invited')
-    expect(aindaConvidado?.role).toBe('member')
+    expect(aindaConvidado).toMatchObject({
+      status: 'invited',
+      role: 'member',
+      area_id: area!.id,
+      email,
+    })
 
     const ativacaoSimples = await asInvitedUser
       .from('profiles')
@@ -152,13 +185,17 @@ describe('RLS: ativação da própria conta (profiles_ativa_a_si)', () => {
       .eq('id', userId)
     expect(ativacaoSimples.error).toBeNull()
 
-    const { data: agoraAtivo, error: leituraFinalError } = await adminClient()
+    const { data: agoraAtivo, error: leituraFinalError } = await db
       .from('profiles')
-      .select('status, role')
+      .select('status, role, area_id, email')
       .eq('id', userId)
       .single()
     if (leituraFinalError) throw leituraFinalError
-    expect(agoraAtivo?.status).toBe('active')
-    expect(agoraAtivo?.role).toBe('member')
+    expect(agoraAtivo).toMatchObject({
+      status: 'active',
+      role: 'member',
+      area_id: area!.id,
+      email,
+    })
   })
 })

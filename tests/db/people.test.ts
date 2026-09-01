@@ -295,3 +295,94 @@ describe('invariante: sempre existe ao menos um admin ativo (profiles_exige_admi
     }
   })
 })
+
+// profiles_leitura_propria / _admin / _lider (0001, 215-227) eram corretas só
+// por inspeção — nenhum teste provava quem de fato enxerga o quê. É a maior
+// superfície não testada do schema: nome, e-mail, papel, área e status de
+// cada colaborador da empresa. Fixtures em duas áreas para o caso do líder
+// ser significativo: com uma área só, "líder vê a própria área" e "líder vê
+// tudo" seriam indistinguíveis.
+describe('RLS: leitura de profiles (profiles_leitura_propria / _admin / _lider)', () => {
+  it('membro lê só a própria linha; admin lê todo mundo; líder lê a própria área, não a alheia', async () => {
+    const stamp = Date.now()
+
+    const { data: areaA } = await db
+      .from('areas')
+      .insert({ name: 'Leitura A', slug: `leitura-a-${stamp}` })
+      .select('id')
+      .single()
+    const { data: areaB } = await db
+      .from('areas')
+      .insert({ name: 'Leitura B', slug: `leitura-b-${stamp}` })
+      .select('id')
+      .single()
+
+    const memberAEmail = `membro-leitura-a-${stamp}@gexcorp.com.br`
+    const leaderAEmail = `lider-leitura-a-${stamp}@gexcorp.com.br`
+    const memberBEmail = `membro-leitura-b-${stamp}@gexcorp.com.br`
+    const leaderBEmail = `lider-leitura-b-${stamp}@gexcorp.com.br`
+    const adminEmail = `admin-leitura-${stamp}@gexcorp.com.br`
+
+    const memberAId = await createTestUser({
+      email: memberAEmail,
+      fullName: 'Membro Área A',
+      role: 'member',
+      areaId: areaA!.id,
+    })
+    const leaderAId = await createTestUser({
+      email: leaderAEmail,
+      fullName: 'Líder Área A',
+      role: 'leader',
+      areaId: areaA!.id,
+    })
+    const memberBId = await createTestUser({
+      email: memberBEmail,
+      fullName: 'Membro Área B',
+      role: 'member',
+      areaId: areaB!.id,
+    })
+    const leaderBId = await createTestUser({
+      email: leaderBEmail,
+      fullName: 'Líder Área B',
+      role: 'leader',
+      areaId: areaB!.id,
+    })
+    await createTestUser({ email: adminEmail, fullName: 'Admin Leitura', role: 'admin' })
+
+    // Membro: só a própria linha — nunca as de outra pessoa, nem da própria área.
+    const asMemberA = await authClient(memberAEmail)
+    const { data: leituraMembro, error: erroMembro } = await asMemberA
+      .from('profiles')
+      .select('id')
+    expect(erroMembro).toBeNull()
+    expect(leituraMembro).toEqual([{ id: memberAId }])
+
+    // Controle: admin lê todo mundo, inclusive gente de fora da própria "área"
+    // (o admin não tem área) — sem este controle, o teste do membro só
+    // provaria "algo foi bloqueado", não que a política discrimina por papel.
+    const asAdmin = await authClient(adminEmail)
+    const { data: leituraAdmin, error: erroAdmin } = await asAdmin.from('profiles').select('id')
+    expect(erroAdmin).toBeNull()
+    const idsVisiveisAdmin = new Set((leituraAdmin ?? []).map((p) => p.id))
+    for (const id of [memberAId, leaderAId, memberBId, leaderBId]) {
+      expect(idsVisiveisAdmin.has(id), `admin deveria ver o perfil ${id}`).toBe(true)
+    }
+
+    // Líder: vê a própria área (a si mesmo e o colega), não a área alheia.
+    const asLeaderA = await authClient(leaderAEmail)
+    const { data: leituraLider, error: erroLider } = await asLeaderA.from('profiles').select('id')
+    expect(erroLider).toBeNull()
+    const idsVisiveisLider = new Set((leituraLider ?? []).map((p) => p.id))
+    expect(idsVisiveisLider.has(leaderAId), 'líder deveria ver a si mesmo').toBe(true)
+    expect(idsVisiveisLider.has(memberAId), 'líder deveria ver colega da própria área').toBe(
+      true,
+    )
+    expect(
+      idsVisiveisLider.has(memberBId),
+      'líder não deveria ver colaborador de outra área',
+    ).toBe(false)
+    expect(idsVisiveisLider.has(leaderBId), 'líder não deveria ver líder de outra área').toBe(
+      false,
+    )
+  })
+})
