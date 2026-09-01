@@ -12,6 +12,31 @@
 
 **Pré-requisito:** Fases 1 e 2 concluídas.
 
+## Herança da fase 2 — leia antes de começar
+
+A fase 2 terminou com revisão de branch inteiro sem nenhum achado Critical. Três
+coisas que ela deixou registradas e que esta fase precisa respeitar:
+
+**1. `courses.owner_id` NÃO é um destinatário confiável.** A política de escrita
+fixa o dono num UPDATE comum, mas não no INSERT nem quando o UPDATE traz um `id`
+que ainda não existe. Um líder consegue, portanto, gravar qualquer perfil como
+dono de um curso da própria área. O fórum desta fase notifica **os líderes ativos
+da área do curso**, não o `owner_id` — a área é derivada do curso e não é forjável
+pelo mesmo caminho. Não volte a usar `owner_id` para decidir quem recebe e-mail.
+
+**2. O teste de paridade entre `canAccessCourse` e `can_access_course`
+(`tests/db/paridade-acesso.test.ts`) compara apenas o booleano "tem algum
+acesso".** Ele não fixa três coisas: a ordem "status antes de papel" (não há admin
+nem líder inativo na matriz), usuários com área nula, e a distinção entre `view` e
+`manage`. Essa última importa porque `getManagedCourse` agora é literalmente
+`canAccessCourse(...) === 'manage'` e nada compara isso com o `can_manage_course`
+do SQL. Se esta fase tocar em qualquer uma das duas cópias da regra, estenda a
+matriz antes.
+
+**3. Toda `SECURITY DEFINER` nova leva `revoke execute ... from public, anon`.**
+Isso apareceu três vezes na fase 2, sempre como achado. Trate como mecânico, não
+caso a caso.
+
 ## Global Constraints
 
 - Next.js **16**: middleware é `src/proxy.ts` exportando `proxy`.
@@ -1078,15 +1103,29 @@ export async function askQuestion(
       .single()
     if (error) throw error
 
-    // Avisa o dono do curso. Falha de e-mail não desfaz a pergunta.
+    // Avisa os LÍDERES DA ÁREA do curso — não o `owner_id`.
+    //
+    // A revisão da fase 2 mostrou que `owner_id` não é confiável como
+    // destinatário: a política de escrita não o fixa no INSERT nem quando o
+    // UPDATE traz um id novo, então um líder consegue gravar qualquer perfil
+    // como dono de um curso da própria área. Como este e-mail carrega o corpo
+    // da pergunta, os títulos e um link direto, mandá-lo para `owner_id`
+    // transformaria isso num canal de envio de conteúdo para quem não gerencia
+    // nada. A área do curso é derivada do próprio curso e não é forjável pelo
+    // mesmo caminho.
     const admin = createAdminSupabase()
-    const { data: dono } = await admin
+    const { data: lideres } = await admin
       .from('profiles')
       .select('email')
-      .eq('id', ctx.ownerId)
-      .maybeSingle()
+      .eq('role', 'leader')
+      .eq('status', 'active')
+      .eq('area_id', ctx.areaId)
 
-    if (dono?.email && ctx.ownerId !== ctx.user.id) {
+    const destinatarios = (lideres ?? [])
+      .map((l) => l.email)
+      .filter((email) => email !== ctx.user.email)
+
+    if (destinatarios.length > 0) {
       const conteudo = novaDuvidaEmail({
         alunoNome: ctx.user.fullName,
         aulaTitulo: ctx.lessonTitle,
@@ -1094,7 +1133,7 @@ export async function askQuestion(
         pergunta: parsed.data.body,
         url: `${process.env.NEXT_PUBLIC_SITE_URL}/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`,
       })
-      await sendEmail({ to: dono.email, ...conteudo })
+      await sendEmail({ to: destinatarios, ...conteudo })
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
