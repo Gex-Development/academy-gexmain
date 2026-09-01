@@ -494,12 +494,42 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      can_access_course: {
+        Args: { p_course_id: string }
+        Returns: boolean
+      }
+      can_manage_area: {
+        Args: { p_area_id: string }
+        Returns: boolean
+      }
+      can_manage_course: {
+        Args: { p_course_id: string }
+        Returns: boolean
+      }
       contar_aulas_publicadas: {
         Args: Record<PropertyKey, never>
         Returns: {
           course_id: string
           total: number
         }[]
+      }
+      curso_mantem_owner: {
+        Args: { p_id: string; p_owner_id: string }
+        Returns: boolean
+      }
+      pergunta_mantem_chaves: {
+        Args: {
+          p_id: string
+          p_lesson_id: string
+          p_author_id: string
+          p_is_pinned: boolean
+          p_resolved_at: string | null
+        }
+        Returns: boolean
+      }
+      resposta_mantem_chaves: {
+        Args: { p_id: string; p_question_id: string; p_author_id: string }
+        Returns: boolean
       }
     }
     Enums: {
