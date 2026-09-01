@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CompleteButton } from '@/components/progress/complete-button'
+import { ForumSection } from '@/components/forum/forum-section'
 import { VideoPlayer } from '@/components/video/video-player'
 import { listAttachments } from '@/server/attachments'
+import { listQuestions } from '@/server/forum'
 import { getCompletedLessonIds } from '@/server/progress'
 import { getLessonView } from '@/server/viewer'
 
@@ -23,6 +25,7 @@ export default async function AulaPage({
   const { course, lesson, anterior, proxima } = view
   const attachments = await listAttachments(lesson.id)
   const concluidas = await getCompletedLessonIds(course.id)
+  const questions = await listQuestions(lesson.id)
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -84,6 +87,8 @@ export default async function AulaPage({
           </Link>
         )}
       </nav>
+
+      <ForumSection lessonId={lesson.id} questions={questions} />
     </div>
   )
 }
