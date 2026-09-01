@@ -95,12 +95,24 @@ export async function requestAccess(
  * usado pela tela de curso trancado (`/curso/[slug]`) para decidir entre
  * mostrar o formulário de pedir acesso ou "seu pedido está em análise".
  *
+ * Um arquivo `'use server'` exporta endpoints chamáveis por qualquer sessão
+ * (README.md, "Onde as coisas vivem"), então `courseId` é validado com Zod
+ * como o resto do projeto faz (ver `idValido` em listQuestions, em
+ * forum.ts) — mesmo esta função não sendo uma mutação por trás de um botão,
+ * ela ainda recebe input de fora sem passar por formulário nenhum. Um
+ * `courseId` que não é UUID nunca vai casar linha nenhuma de qualquer
+ * forma; `'none'` cedo aqui só evita gastar uma consulta no banco para
+ * chegar à mesma resposta.
+ *
  * Chamada só quando `course.access === 'none'`: getCourseView já garante
  * sessão ativa antes de devolver um curso não nulo (ver comentário em
  * src/server/viewer.ts), então o `null` de `getCurrentUser()` aqui não é um
  * caminho real — só o tipo exige a checagem.
  */
 export async function getPendingRequestStatus(courseId: string): Promise<'pending' | 'none'> {
+  const idValido = z.string().uuid().safeParse(courseId)
+  if (!idValido.success) return 'none'
+
   const user = await getCurrentUser()
   if (!user) return 'none'
 
@@ -109,7 +121,7 @@ export async function getPendingRequestStatus(courseId: string): Promise<'pendin
     .from('access_requests')
     .select('id')
     .eq('user_id', user.id)
-    .eq('course_id', courseId)
+    .eq('course_id', idValido.data)
     .eq('status', 'pending')
     .maybeSingle()
   // Descartar este erro faria a tela mostrar o formulário para quem já tem
