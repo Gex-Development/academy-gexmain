@@ -27,6 +27,10 @@ export type CatalogItem = {
   // nenhuma (só areas.slug tem), então duas áreas podem ter o mesmo nome.
   areaId: string | null
   areaName: string | null
+  // Slug e capa da ÁREA (não do curso). A vitrine da fase 4 monta a capa de
+  // área a partir dos cursos, então precisa deles em cada item.
+  areaSlug: string | null
+  areaCoverUrl: string | null
   areaColor: string | null
   // Posição da ÁREA (areas.position — "Posição — Ordem na vitrine" em
   // /admin/areas). null só para a trilha inicial (área nula por definição) e
@@ -52,11 +56,18 @@ export type Catalog = {
   // — existe para servir de `key` de lista na UI. Duas áreas com o mesmo
   // areaName (nome não é único) não podem compartilhar key de React, ou uma
   // das duas seções some/pisca na re-renderização.
-  grupos: { groupKey: string; areaName: string; items: CatalogItem[] }[]
+  grupos: {
+    groupKey: string
+    areaName: string
+    areaSlug: string | null
+    areaCoverUrl: string | null
+    areaColor: string | null
+    items: CatalogItem[]
+  }[]
 }
 
 export const SELECT_CATALOGO =
-  'id, slug, title, description, cover_url, status, is_onboarding, area_id, position, areas(name, color, position)'
+  'id, slug, title, description, cover_url, status, is_onboarding, area_id, position, areas(name, slug, color, position, cover_url)'
 
 export type LinhaCatalogo = {
   id: string
@@ -68,7 +79,7 @@ export type LinhaCatalogo = {
   is_onboarding: boolean
   area_id: string | null
   position: number
-  areas: { name: string; color: string | null; position: number } | null
+  areas: { name: string; slug: string; color: string | null; position: number; cover_url: string | null } | null
 }
 
 /**
@@ -94,6 +105,8 @@ export function paraCatalogItem(
     coverUrl: row.cover_url,
     areaId: row.area_id,
     areaName: row.areas?.name ?? null,
+    areaSlug: row.areas?.slug ?? null,
+    areaCoverUrl: row.areas?.cover_url ?? null,
     areaColor: row.areas?.color ?? null,
     areaPosition: row.areas?.position ?? null,
     isOnboarding: row.is_onboarding,
@@ -148,7 +161,15 @@ export function montarCatalogo(items: CatalogItem[]): Catalog {
   const onboarding = items.find((i) => i.isOnboarding) ?? null
 
   const SEM_AREA = '__sem_area__'
-  type Grupo = { groupKey: string; areaName: string; areaPosition: number | null; items: CatalogItem[] }
+  type Grupo = {
+    groupKey: string
+    areaName: string
+    areaSlug: string | null
+    areaCoverUrl: string | null
+    areaColor: string | null
+    areaPosition: number | null
+    items: CatalogItem[]
+  }
   const porArea = new Map<string, Grupo>()
 
   for (const item of items) {
@@ -157,7 +178,15 @@ export function montarCatalogo(items: CatalogItem[]): Catalog {
 
     let grupo = porArea.get(chave)
     if (!grupo) {
-      grupo = { groupKey: chave, areaName: item.areaName ?? 'Outros', areaPosition: item.areaPosition, items: [] }
+      grupo = {
+        groupKey: chave,
+        areaName: item.areaName ?? 'Outros',
+        areaSlug: item.areaSlug,
+        areaCoverUrl: item.areaCoverUrl,
+        areaColor: item.areaColor,
+        areaPosition: item.areaPosition,
+        items: [],
+      }
       porArea.set(chave, grupo)
     }
     grupo.items.push(item)
@@ -174,6 +203,9 @@ export function montarCatalogo(items: CatalogItem[]): Catalog {
     .map((grupo) => ({
       groupKey: grupo.groupKey,
       areaName: grupo.areaName,
+      areaSlug: grupo.areaSlug,
+      areaCoverUrl: grupo.areaCoverUrl,
+      areaColor: grupo.areaColor,
       items: [...grupo.items].sort(porPosicaoDepoisTitulo),
     }))
 

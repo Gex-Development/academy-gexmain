@@ -13,7 +13,7 @@ function linha(over: Partial<LinhaCatalogo> = {}): LinhaCatalogo {
     is_onboarding: false,
     area_id: 'area-trafego',
     position: 0,
-    areas: { name: 'Tráfego', color: '#2f6bff', position: 0 },
+    areas: { name: 'Tráfego', slug: 'trafego', color: '#2f6bff', position: 0, cover_url: null },
     ...over,
   }
 }
@@ -49,7 +49,7 @@ describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
 
   it('carrega a posição do curso e da área, para a vitrine poder honrar a ordem manual', () => {
     const item = paraCatalogItem(
-      linha({ position: 7, areas: { name: 'Tráfego', color: null, position: 3 } }),
+      linha({ position: 7, areas: { name: 'Tráfego', slug: 'trafego', color: null, position: 3, cover_url: null } }),
       bloqueado,
       new Map(),
       new Map(),
@@ -66,9 +66,11 @@ describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
       [
         'access',
         'areaColor',
+        'areaCoverUrl',
         'areaId',
         'areaName',
         'areaPosition',
+        'areaSlug',
         'coverUrl',
         'description',
         'id',
@@ -168,7 +170,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           id: 'z1',
           title: 'Zebra',
           area_id: 'area-zoologia',
-          areas: { name: 'Zoologia', color: null, position: 0 },
+          areas: { name: 'Zoologia', slug: 'zoologia', color: null, position: 0, cover_url: null },
         }),
         bloqueado,
         new Map(),
@@ -181,7 +183,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           id: 'a1',
           title: 'Abelha',
           area_id: 'area-agropecuaria',
-          areas: { name: 'Agropecuária', color: null, position: 1 },
+          areas: { name: 'Agropecuária', slug: 'agropecuaria', color: null, position: 1, cover_url: null },
         }),
         bloqueado,
         new Map(),
@@ -211,7 +213,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           id: 'z1',
           title: 'Zebra',
           area_id: 'area-trafego',
-          areas: { name: 'Tráfego', color: null, position: 0 },
+          areas: { name: 'Tráfego', slug: 'trafego', color: null, position: 0, cover_url: null },
         }),
         bloqueado,
         new Map(),
@@ -224,7 +226,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           id: 'a1',
           title: 'Abelha',
           area_id: 'area-design',
-          areas: { name: 'Design', color: null, position: 0 },
+          areas: { name: 'Design', slug: 'design', color: null, position: 0, cover_url: null },
         }),
         bloqueado,
         new Map(),
@@ -245,7 +247,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
       // Área com position alta (99) ainda vem antes de "Outros", que não tem
       // position nenhuma para honrar.
       const comArea = paraCatalogItem(
-        linha({ id: 'c1', title: 'Curso Com Área', areas: { name: 'Zoologia', color: null, position: 99 } }),
+        linha({ id: 'c1', title: 'Curso Com Área', areas: { name: 'Zoologia', slug: 'zoologia', color: null, position: 99, cover_url: null } }),
         bloqueado,
         new Map(),
         new Map(),
@@ -275,7 +277,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           id: 'c1',
           title: 'Curso Área Antiga',
           area_id: 'area-1',
-          areas: { name: 'Design', color: null, position: 0 },
+          areas: { name: 'Design', slug: 'design', color: null, position: 0, cover_url: null },
         }),
         bloqueado,
         new Map(),
@@ -288,7 +290,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           id: 'c2',
           title: 'Curso Área Renomeada',
           area_id: 'area-2',
-          areas: { name: 'Design', color: null, position: 1 },
+          areas: { name: 'Design', slug: 'design', color: null, position: 1, cover_url: null },
         }),
         bloqueado,
         new Map(),
