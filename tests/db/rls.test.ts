@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { Database } from '@/lib/supabase/database.types'
 import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 const db = adminClient()
@@ -583,6 +584,196 @@ describe('RLS — courses_escrita: WITH CHECK de INSERT também exige auth_is_ac
   })
 })
 
+// 0008_revisao_de_fase.sql, achado 3 (revisão de fase): courses_escrita não
+// travava owner_id — um líder conseguia fazer PATCH em courses.owner_id do
+// próprio curso e apontar para qualquer profile id. A fase 3 usa esse campo
+// para notificar por e-mail o dono do curso (corpo da pergunta, títulos e
+// link direto incluídos); sem o freio, um líder vira canal para empurrar
+// conteúdo a qualquer colaborador, sem esse colaborador gerenciar nada.
+describe('RLS — courses_escrita: owner_id travado para líder, livre para admin', () => {
+  it('líder não reatribui owner_id do próprio curso; edição normal continua livre; admin reatribui', async () => {
+    const stamp = Date.now()
+    const outroPerfilId = await createTestUser({
+      email: `outro-perfil-owner-${stamp}@gexcorp.com.br`,
+      fullName: 'Outro Perfil (destino de reatribuição)',
+      role: 'member',
+      areaId: areaTrafego,
+    })
+    lixeira.usuario(outroPerfilId)
+
+    const { data: curso, error: cursoError } = await db
+      .from('courses')
+      .insert({
+        title: 'Curso Para Reatribuir Owner',
+        slug: `curso-reatribuir-owner-${stamp}`,
+        area_id: areaTrafego,
+        owner_id: liderId,
+        status: 'published',
+      })
+      .select('id')
+      .single()
+    expect(cursoError).toBeNull()
+    lixeira.curso(curso!.id)
+
+    const comoLider = await authClient(emailLiderTrafego)
+    const { error: erroLider } = await comoLider
+      .from('courses')
+      .update({ owner_id: outroPerfilId })
+      .eq('id', curso!.id)
+    expect(erroLider?.code).toBe('42501')
+
+    const { data: intacto } = await db.from('courses').select('owner_id').eq('id', curso!.id).single()
+    expect(intacto!.owner_id).toBe(liderId)
+
+    // Controle: editar outro campo do MESMO curso, sem tocar owner_id,
+    // continua funcionando — a recusa acima é sobre a coluna, não sobre o
+    // líder ter perdido a capacidade de editar o curso.
+    const { error: erroDescricao } = await comoLider
+      .from('courses')
+      .update({ description: 'Descrição normal, sem mexer no dono.' })
+      .eq('id', curso!.id)
+    expect(erroDescricao).toBeNull()
+
+    // Admin reatribui normalmente — a trava é específica de líder.
+    const comoAdmin = await authClient(emailAdminAtivo)
+    const { error: erroAdmin } = await comoAdmin
+      .from('courses')
+      .update({ owner_id: outroPerfilId })
+      .eq('id', curso!.id)
+    expect(erroAdmin).toBeNull()
+
+    const { data: reatribuido } = await db.from('courses').select('owner_id').eq('id', curso!.id).single()
+    expect(reatribuido!.owner_id).toBe(outroPerfilId)
+  })
+})
+
+// Gap de teste da revisão de fase: nada provava que courses_escrita — cujo
+// USING (can_manage_course(id)) e WITH CHECK (can_manage_area(area_id)) são
+// colunas DIFERENTES desde 0007 — de fato impede um líder de mover um curso
+// entre áreas. As duas direções importam: empurrar o PRÓPRIO curso para fora
+// da área (USING passa, WITH CHECK barra) e puxar um curso ALHEIO para
+// dentro da própria área (USING já barra a linha, nem chega no WITH CHECK).
+describe('RLS — courses_escrita: líder não move curso entre áreas', () => {
+  it('líder não empurra o próprio curso para outra área; admin consegue (controle)', async () => {
+    const stamp = Date.now()
+    const { data: curso, error: cursoError } = await db
+      .from('courses')
+      .insert({
+        title: 'Curso Para Mover De Área',
+        slug: `curso-mover-area-${stamp}`,
+        area_id: areaTrafego,
+        owner_id: liderId,
+        status: 'published',
+      })
+      .select('id')
+      .single()
+    expect(cursoError).toBeNull()
+    lixeira.curso(curso!.id)
+
+    const comoLider = await authClient(emailLiderTrafego)
+    const { error: erroLider } = await comoLider
+      .from('courses')
+      .update({ area_id: areaDesign })
+      .eq('id', curso!.id)
+    expect(erroLider?.code).toBe('42501')
+
+    const { data: intacto } = await db.from('courses').select('area_id').eq('id', curso!.id).single()
+    expect(intacto!.area_id).toBe(areaTrafego)
+
+    // Controle: admin move o mesmo curso normalmente — a recusa acima é
+    // sobre a AUTORIDADE do líder na área de destino, não uma trava
+    // universal na coluna area_id.
+    const comoAdmin = await authClient(emailAdminAtivo)
+    const { error: erroAdmin } = await comoAdmin
+      .from('courses')
+      .update({ area_id: areaDesign })
+      .eq('id', curso!.id)
+    expect(erroAdmin).toBeNull()
+
+    const { data: movido } = await db.from('courses').select('area_id').eq('id', curso!.id).single()
+    expect(movido!.area_id).toBe(areaDesign)
+  })
+
+  it('líder não puxa curso alheio de outra área para dentro da própria (USING já barra a linha)', async () => {
+    const stamp = Date.now()
+    const { data: cursoAlheio, error: cursoError } = await db
+      .from('courses')
+      .insert({
+        title: 'Curso Alheio Para Puxar',
+        slug: `curso-alheio-puxar-${stamp}`,
+        area_id: areaDesign,
+        owner_id: liderId,
+        status: 'published',
+      })
+      .select('id')
+      .single()
+    expect(cursoError).toBeNull()
+    lixeira.curso(cursoAlheio!.id)
+
+    const comoLiderTrafego = await authClient(emailLiderTrafego)
+    // Sem erro explícito: USING de courses_escrita barra a linha antes do
+    // WITH CHECK — o UPDATE afeta zero linhas (padrão do Postgres para RLS:
+    // uma linha que a USING não seleciona simplesmente não entra no conjunto
+    // afetado, não lança 42501).
+    const { error, data } = await comoLiderTrafego
+      .from('courses')
+      .update({ area_id: areaTrafego })
+      .eq('id', cursoAlheio!.id)
+      .select('id')
+    expect(error).toBeNull()
+    expect(data).toEqual([])
+
+    const { data: intacto } = await db.from('courses').select('area_id').eq('id', cursoAlheio!.id).single()
+    expect(intacto!.area_id).toBe(areaDesign)
+
+    // Controle: admin consegue puxar o mesmo curso alheio para Tráfego.
+    const comoAdmin = await authClient(emailAdminAtivo)
+    const { error: erroAdmin } = await comoAdmin
+      .from('courses')
+      .update({ area_id: areaTrafego })
+      .eq('id', cursoAlheio!.id)
+    expect(erroAdmin).toBeNull()
+
+    const { data: puxado } = await db.from('courses').select('area_id').eq('id', cursoAlheio!.id).single()
+    expect(puxado!.area_id).toBe(areaTrafego)
+  })
+})
+
+// 0008_revisao_de_fase.sql, achado 2 (revisão de fase): progresso_proprio
+// checava só "user_id = auth.uid() e auth_is_active()" — a foreign key era o
+// único outro freio. Um colaborador ativo gravava progresso em QUALQUER
+// aula, inclusive de curso ao qual não tem acesso — e progresso_gestao
+// entrega essas linhas ao gestor do curso da aula.
+describe('RLS — progresso_proprio: só registra progresso de aula que a pessoa acessa', () => {
+  it('aluno de tráfego registra progresso na própria aula; é recusado numa aula que não acessa', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+
+    const { error: erroPermitido } = await comoAlunoTrafego
+      .from('lesson_progress')
+      .insert({ user_id: alunoTrafegoId, lesson_id: aulaTrafego })
+    expect(erroPermitido).toBeNull()
+
+    const { data: registrado } = await db
+      .from('lesson_progress')
+      .select('user_id')
+      .eq('user_id', alunoTrafegoId)
+      .eq('lesson_id', aulaTrafego)
+    expect(registrado).toHaveLength(1)
+
+    const { error: erroNegado } = await comoAlunoTrafego
+      .from('lesson_progress')
+      .insert({ user_id: alunoTrafegoId, lesson_id: aulaDesignAlheio })
+    expect(erroNegado?.code).toBe('42501')
+
+    const { data: naoRegistrado } = await db
+      .from('lesson_progress')
+      .select('user_id')
+      .eq('user_id', alunoTrafegoId)
+      .eq('lesson_id', aulaDesignAlheio)
+    expect(naoRegistrado).toEqual([])
+  })
+})
+
 // 0005_endurece_politicas.sql, achado 2 (revisão): contar_aulas_publicadas()
 // filtrava a LINHA certo, mas não tinha gate de quem pode CHAMAR — o
 // Postgres concede EXECUTE a PUBLIC por padrão, e o Supabase concede a anon
@@ -591,7 +782,7 @@ describe('RLS — courses_escrita: WITH CHECK de INSERT também exige auth_is_ac
 // função zera o resultado de quem está autenticado mas desativado.
 describe('RLS — contar_aulas_publicadas(): EXECUTE revogado de anon/PUBLIC', () => {
   it('cliente anônimo não consegue chamar a RPC de contagem', async () => {
-    const anon = createClient(
+    const anon = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
       { auth: { persistSession: false } },
@@ -809,40 +1000,26 @@ describe('RLS — courses_leitura: RETURNING funciona para curso recém-criado e
   })
 })
 
-// 0007_endurece_funcoes_security_definer.sql, achado 3 (re-revisão):
-// anexos_storage_escrita nunca tinha teste em nenhuma rodada. O risco de
-// acrescentar um "and auth_is_active()" a uma política nunca exercitada não
-// é o lado da negação vazar — é o lado da permissão quebrar sem ninguém
-// notar. A tarefa 4 desta fase (Anexos) depende de upload funcionar.
-describe('RLS — anexos_storage_escrita: upload exige papel + auth_is_active()', () => {
-  it('líder ativo da área sobe objeto com sucesso', async () => {
+// 0008_revisao_de_fase.sql, achado 4 (revisão de fase): anexos_storage_escrita
+// concedia uma capacidade que a aplicação nunca usa — mintAttachmentUpload
+// (src/server/attachments-upload.ts) sempre minta a URL assinada pelo
+// cliente ADMIN, e o token resultante autoriza a escrita sozinho, sem
+// consultar RLS nenhuma. A política antiga só deixava aberto um canal de
+// escrita DIRETA e sem escopo (qualquer líder ativo gravava qualquer byte em
+// qualquer caminho do bucket); removida.
+//
+// A prova que substitui a antiga (que testava o caminho DIRETO, agora
+// deliberadamente sem política nenhuma) é em duas pontas: ninguém — nem o
+// mesmo líder ativo que antes tinha permissão — consegue mais gravar objeto
+// por upload direto; e o caminho de verdade da aplicação (mint pelo cliente
+// admin + upload com a URL assinada, exatamente o que mintAttachmentUpload/
+// uploadToSignedUrl fazem) continua funcionando — o token é a autorização,
+// não RLS. Cobertura adicional do mesmo caminho, ponta a ponta pela camada
+// de aplicação de verdade, em tests/db/attachments-upload.test.ts.
+describe('RLS — storage de anexos: upload direto não tem política nenhuma; URL assinada continua funcionando', () => {
+  it('líder ativo da área NÃO consegue mais subir objeto por upload direto', async () => {
     const cliente = await authClient(emailLiderTrafego)
-    const caminho = `${aulaTrafego}/upload-ativo-${Date.now()}.txt`
-    const { error } = await cliente.storage
-      .from('lesson-attachments')
-      .upload(caminho, new Blob(['conteúdo de teste']), { contentType: 'text/plain' })
-    expect(error).toBeNull()
-
-    const { data: objetos } = await db.storage.from('lesson-attachments').list(aulaTrafego)
-    expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(true)
-
-    await db.storage.from('lesson-attachments').remove([caminho])
-  })
-
-  it('líder desativado é recusado no upload', async () => {
-    const stamp = Date.now()
-    const emailLiderStorage = `lider-storage-inativo-${stamp}@gexcorp.com.br`
-    const liderStorageId = await createTestUser({
-      email: emailLiderStorage,
-      fullName: 'Líder Storage Inativo',
-      role: 'leader',
-      areaId: areaTrafego,
-      status: 'inactive',
-    })
-    lixeira.usuario(liderStorageId)
-
-    const cliente = await authClient(emailLiderStorage)
-    const caminho = `${aulaTrafego}/upload-inativo-${stamp}.txt`
+    const caminho = `${aulaTrafego}/upload-direto-${Date.now()}.txt`
     const { error } = await cliente.storage
       .from('lesson-attachments')
       .upload(caminho, new Blob(['conteúdo de teste']), { contentType: 'text/plain' })
@@ -850,6 +1027,30 @@ describe('RLS — anexos_storage_escrita: upload exige papel + auth_is_active()'
 
     const { data: objetos } = await db.storage.from('lesson-attachments').list(aulaTrafego)
     expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(false)
+  })
+
+  it('upload via URL assinada (o caminho real da aplicação) continua funcionando para o mesmo líder', async () => {
+    const caminho = `${aulaTrafego}/upload-assinado-${Date.now()}.txt`
+    // db aqui é o cliente admin (service_role) — o mesmo papel que
+    // mintAttachmentUpload usa para chamar createSignedUploadUrl.
+    const { data: assinado, error: erroAssinatura } = await db.storage
+      .from('lesson-attachments')
+      .createSignedUploadUrl(caminho)
+    expect(erroAssinatura).toBeNull()
+    if (!assinado) return
+
+    const cliente = await authClient(emailLiderTrafego)
+    const { error: erroUpload } = await cliente.storage
+      .from('lesson-attachments')
+      .uploadToSignedUrl(assinado.path, assinado.token, new Blob(['conteúdo de teste']), {
+        contentType: 'text/plain',
+      })
+    expect(erroUpload).toBeNull()
+
+    const { data: objetos } = await db.storage.from('lesson-attachments').list(aulaTrafego)
+    expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(true)
+
+    await db.storage.from('lesson-attachments').remove([caminho])
   })
 })
 
@@ -959,7 +1160,7 @@ describe('RLS — perguntas_edita: is_pinned/resolved_at travados pro autor, liv
 // RLS completamente ignorado.
 describe('RLS — pergunta_mantem_chaves/resposta_mantem_chaves: EXECUTE revogado de anon/PUBLIC', () => {
   it('cliente anônimo não consegue chamar pergunta_mantem_chaves', async () => {
-    const anon = createClient(
+    const anon = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
       { auth: { persistSession: false } },
@@ -976,7 +1177,7 @@ describe('RLS — pergunta_mantem_chaves/resposta_mantem_chaves: EXECUTE revogad
   })
 
   it('cliente anônimo não consegue chamar resposta_mantem_chaves', async () => {
-    const anon = createClient(
+    const anon = createClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
       { auth: { persistSession: false } },

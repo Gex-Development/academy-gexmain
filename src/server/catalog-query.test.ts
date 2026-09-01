@@ -65,6 +65,7 @@ describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
       [
         'access',
         'areaColor',
+        'areaId',
         'areaName',
         'areaPosition',
         'coverUrl',
@@ -123,14 +124,24 @@ describe('montarCatalogo — separação e agrupamento', () => {
       // oposto da ordem alfabética. Sob o sort antigo (só localeCompare no
       // nome), este teste falharia.
       const zebra = paraCatalogItem(
-        linha({ id: 'z1', title: 'Zebra', areas: { name: 'Zoologia', color: null, position: 0 } }),
+        linha({
+          id: 'z1',
+          title: 'Zebra',
+          area_id: 'area-zoologia',
+          areas: { name: 'Zoologia', color: null, position: 0 },
+        }),
         bloqueado,
         new Map(),
         new Set(),
         new Set(),
       )
       const abelha = paraCatalogItem(
-        linha({ id: 'a1', title: 'Abelha', areas: { name: 'Agropecuária', color: null, position: 1 } }),
+        linha({
+          id: 'a1',
+          title: 'Abelha',
+          area_id: 'area-agropecuaria',
+          areas: { name: 'Agropecuária', color: null, position: 1 },
+        }),
         bloqueado,
         new Map(),
         new Set(),
@@ -154,14 +165,24 @@ describe('montarCatalogo — separação e agrupamento', () => {
 
     it('empate de position cai no desempate por nome/título em pt-BR', () => {
       const zebraTrafego = paraCatalogItem(
-        linha({ id: 'z1', title: 'Zebra', areas: { name: 'Tráfego', color: null, position: 0 } }),
+        linha({
+          id: 'z1',
+          title: 'Zebra',
+          area_id: 'area-trafego',
+          areas: { name: 'Tráfego', color: null, position: 0 },
+        }),
         bloqueado,
         new Map(),
         new Set(),
         new Set(),
       )
       const abelhaDesign = paraCatalogItem(
-        linha({ id: 'a1', title: 'Abelha', areas: { name: 'Design', color: null, position: 0 } }),
+        linha({
+          id: 'a1',
+          title: 'Abelha',
+          area_id: 'area-design',
+          areas: { name: 'Design', color: null, position: 0 },
+        }),
         bloqueado,
         new Map(),
         new Set(),
@@ -195,6 +216,49 @@ describe('montarCatalogo — separação e agrupamento', () => {
       )
       const catalogo = montarCatalogo([orfao, comArea])
       expect(catalogo.grupos.map((g) => g.areaName)).toEqual(['Zoologia', 'Outros'])
+    })
+
+    // Achado da revisão de fase: areas.name não tem constraint de unicidade
+    // nenhuma (só areas.slug tem), e updateArea nunca toca o slug — então
+    // renomear uma área para o nome de outra já existente não dá erro.
+    // Agrupar pelo NOME (como o código fazia antes) fundiria os cursos das
+    // duas sob um único cabeçalho; agrupar por areaId não.
+    it('duas áreas com o mesmo nome (colisão via renomeação) geram grupos distintos, em ordem de posição', () => {
+      const cursoAreaAntiga = paraCatalogItem(
+        linha({
+          id: 'c1',
+          title: 'Curso Área Antiga',
+          area_id: 'area-1',
+          areas: { name: 'Design', color: null, position: 0 },
+        }),
+        bloqueado,
+        new Map(),
+        new Set(),
+        new Set(),
+      )
+      const cursoAreaRenomeada = paraCatalogItem(
+        linha({
+          id: 'c2',
+          title: 'Curso Área Renomeada',
+          area_id: 'area-2',
+          areas: { name: 'Design', color: null, position: 1 },
+        }),
+        bloqueado,
+        new Map(),
+        new Set(),
+        new Set(),
+      )
+
+      // Ordem de chegada deliberadamente invertida em relação à posição —
+      // um agrupamento por nome (que colide) dependeria de qual item chega
+      // primeiro no Map; por areaId, cada área tem seu próprio grupo e a
+      // ordenação por areaPosition decide sozinha.
+      const catalogo = montarCatalogo([cursoAreaRenomeada, cursoAreaAntiga])
+      expect(catalogo.grupos).toHaveLength(2)
+      expect(catalogo.grupos.map((g) => g.areaName)).toEqual(['Design', 'Design'])
+      expect(catalogo.grupos.map((g) => g.groupKey)).toEqual(['area-1', 'area-2'])
+      expect(catalogo.grupos[0]!.items.map((i) => i.id)).toEqual(['c1'])
+      expect(catalogo.grupos[1]!.items.map((i) => i.id)).toEqual(['c2'])
     })
   })
 })
