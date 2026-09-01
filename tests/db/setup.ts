@@ -1,6 +1,10 @@
 import { config } from 'dotenv'
 
-config({ path: '.env.local' })
+// quiet: true só cala a dica informativa de sempre ("injected env (N) from
+// .env.local // tip: ..."), suportada desde dotenv 17.0.0 (instalado: ver
+// package.json) — não afeta erro nenhum, porque dotenv não loga erro de
+// leitura por padrão, só essa dica.
+config({ path: '.env.local', quiet: true })
 
 const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
 for (const key of required) {

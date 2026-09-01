@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
 
-config({ path: '.env.local' })
+// quiet: true só cala a dica informativa de sempre ("injected env (N) from
+// .env.local // tip: ..."), suportada desde dotenv 17.0.0 (instalado: ver
+// package.json) — mesmo motivo documentado em tests/db/setup.ts.
+config({ path: '.env.local', quiet: true })
 
 export function adminClient() {
   return createClient(
