@@ -200,12 +200,24 @@ export type LinhaFilaDuvidas = {
  * área que ele de fato gerencia, nunca um curso de outra área que ele
  * enxerga por liberação avulsa. Um filtro extra e barato aqui garante isso
  * mesmo se o RLS um dia mudar.
+ *
+ * Mesma forma de podeGerenciarArea (acima): `areaId !== null` explícito
+ * antes de comparar. Sem essa guarda, um líder sem área própria (admin
+ * cadastrou sem área) bateria `null === null` com QUALQUER curso sem área —
+ * e a trilha de onboarding é exatamente um curso sem área. `role ===
+ * 'leader'` explícito também, mais estreito que "não-admin": correto porque
+ * listPendingQuestions já devolve `[]` para member antes de chegar aqui,
+ * então nada de legítimo se perde, e esta função deixa de depender de quem
+ * a chama para estar certa.
  */
 export function pertenceAFilaDoLider(
   pessoa: { role: string; areaId: string | null },
   areaIdDoCurso: string | null,
 ): boolean {
-  return pessoa.role === 'admin' || areaIdDoCurso === pessoa.areaId
+  return (
+    pessoa.role === 'admin' ||
+    (pessoa.role === 'leader' && pessoa.areaId !== null && pessoa.areaId === areaIdDoCurso)
+  )
 }
 
 /** Uma linha de `questions` (com aula/curso aninhados) vira um PendingQuestion pronto para a tela. */

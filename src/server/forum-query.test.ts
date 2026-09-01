@@ -226,6 +226,18 @@ describe('pertenceAFilaDoLider — defesa em profundidade da fila de dúvidas do
   it('líder sem área própria (areaId null) não vê fila de curso com área', () => {
     expect(pertenceAFilaDoLider({ role: 'leader', areaId: null }, AREA_TRAFEGO)).toBe(false)
   })
+
+  it('líder sem área própria (areaId null) não vê a fila de um curso TAMBÉM sem área (trilha de onboarding) — null não é uma área que bate com null', () => {
+    expect(pertenceAFilaDoLider({ role: 'leader', areaId: null }, null)).toBe(false)
+  })
+
+  it('admin vê a fila de um curso sem área (trilha de onboarding)', () => {
+    expect(pertenceAFilaDoLider({ role: 'admin', areaId: null }, null)).toBe(true)
+  })
+
+  it('colega comum (member) nunca vê a fila, mesmo com áreas batendo', () => {
+    expect(pertenceAFilaDoLider({ role: 'member', areaId: AREA_TRAFEGO }, AREA_TRAFEGO)).toBe(false)
+  })
 })
 
 function linhaFila(over: Partial<LinhaFilaDuvidas> = {}): LinhaFilaDuvidas {
