@@ -83,7 +83,18 @@ async function contextoDaAula(lessonId: string) {
 
 type ContextoDaAula = NonNullable<Awaited<ReturnType<typeof contextoDaAula>>>
 
-/** Publicações da pessoa dentro da janela do limite de abuso. */
+/**
+ * Publicações da pessoa dentro da janela do limite de abuso.
+ *
+ * Se `perguntas` ou `respostas` falhar, `.data` vem `null` e o `?? []`
+ * abaixo devolve uma lista menor (ou vazia) do que a real — `excedeuLimite`
+ * então subestima quantas publicações recentes existem, e o limite pode não
+ * disparar quando deveria. Deliberado, não descuido: para um MVP interno,
+ * falhar ABERTO (deixar passar) é aceitável — falhar FECHADO impediria
+ * alguém de publicar uma pergunta ou resposta de verdade só porque a
+ * consulta de contagem teve um soluço no banco, o que é pior do que o
+ * limite de abuso ocasionalmente não pegar um caso.
+ */
 async function publicacoesRecentes(userId: string): Promise<Date[]> {
   const admin = createAdminSupabase()
   const desde = new Date(Date.now() - JANELA_MINUTOS * 60_000).toISOString()
