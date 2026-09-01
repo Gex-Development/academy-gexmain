@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog, CatalogItem } from './catalog-query'
-import { montarVitrine } from './vitrine-query'
+import { escolherDestaque, montarVitrine } from './vitrine-query'
 
 function item(over: Partial<CatalogItem> = {}): CatalogItem {
   return {
@@ -106,5 +106,57 @@ describe('montarVitrine', () => {
     const vitrine = montarVitrine(catalogo([grupo({ areaName: 'Outros', areaSlug: null })]))
 
     expect(vitrine).toEqual([])
+  })
+})
+
+describe('escolherDestaque', () => {
+  it('trilha pendente e acessível → trilha', () => {
+    const onboarding = item({
+      isOnboarding: true,
+      access: 'view',
+      progress: { completed: 1, total: 4, percent: 25 },
+    })
+
+    expect(escolherDestaque(onboarding, true)).toEqual({ tipo: 'trilha', item: onboarding })
+    // A prioridade da trilha não depende de haver retomada ou não.
+    expect(escolherDestaque(onboarding, false)).toEqual({ tipo: 'trilha', item: onboarding })
+  })
+
+  it('trilha 100% concluída e há retomada → retomada', () => {
+    const onboarding = item({
+      isOnboarding: true,
+      access: 'view',
+      progress: { completed: 4, total: 4, percent: 100 },
+    })
+
+    expect(escolherDestaque(onboarding, true)).toEqual({ tipo: 'retomada' })
+  })
+
+  it('não existe trilha no sistema e há retomada → retomada', () => {
+    expect(escolherDestaque(null, true)).toEqual({ tipo: 'retomada' })
+  })
+
+  it('trilha existe mas access é none e há retomada → retomada', () => {
+    const onboarding = item({
+      isOnboarding: true,
+      access: 'none',
+      progress: { completed: 0, total: 4, percent: 0 },
+    })
+
+    expect(escolherDestaque(onboarding, true)).toEqual({ tipo: 'retomada' })
+  })
+
+  it('nada em andamento e trilha concluída → nenhum', () => {
+    const onboarding = item({
+      isOnboarding: true,
+      access: 'view',
+      progress: { completed: 4, total: 4, percent: 100 },
+    })
+
+    expect(escolherDestaque(onboarding, false)).toEqual({ tipo: 'nenhum' })
+  })
+
+  it('sem trilha e sem retomada → nenhum', () => {
+    expect(escolherDestaque(null, false)).toEqual({ tipo: 'nenhum' })
   })
 })

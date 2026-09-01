@@ -3,7 +3,7 @@ import { HeroBanner } from '@/components/catalog/hero-banner'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getCatalog } from '@/server/catalog'
 import { getContinueWatching } from '@/server/progress'
-import { montarVitrine } from '@/server/vitrine-query'
+import { escolherDestaque, montarVitrine } from '@/server/vitrine-query'
 
 export const metadata = { title: 'Início — GEX Academy' }
 
@@ -15,27 +15,26 @@ export default async function HomePage() {
   ])
 
   const areas = montarVitrine(catalog)
-  const onboarding = catalog.onboarding
-  const trilhaPendente =
-    onboarding !== null && onboarding.access !== 'none' && onboarding.progress.percent < 100
+  // A decisão de "trilha pendente vs. não" mora em escolherDestaque
+  // (vitrine-query.ts), testada lá caso a caso — inclusive as bordas sem
+  // trilha no sistema e sem acesso a ela. Aqui só se combina o resultado com
+  // `continuar`: sem os dois, não se inventa destaque — banner falso é pior
+  // que ausência de banner, e fica o cabeçalho de saudação simples.
+  const destaque = escolherDestaque(catalog.onboarding, continuar !== null)
 
-  // Prioridade do banner: quem ainda não terminou a trilha inicial precisa
-  // dela em primeiro lugar — é a primeira coisa que a pessoa tem a fazer na
-  // empresa. Só depois entra "continue de onde parou". Sem nenhum dos dois,
-  // não se inventa destaque: banner falso é pior que ausência de banner.
   return (
     <div className="flex flex-col gap-10">
-      {trilhaPendente ? (
+      {destaque.tipo === 'trilha' ? (
         <HeroBanner
           rotulo="Comece por aqui"
-          titulo={onboarding!.title}
+          titulo={destaque.item.title}
           subtitulo={
-            onboarding!.description ??
-            `${onboarding!.lessonCount} ${onboarding!.lessonCount === 1 ? 'aula' : 'aulas'} sobre a empresa`
+            destaque.item.description ??
+            `${destaque.item.lessonCount} ${destaque.item.lessonCount === 1 ? 'aula' : 'aulas'} sobre a empresa`
           }
-          coverUrl={onboarding!.coverUrl}
-          href={`/curso/${onboarding!.slug}`}
-          textoBotao={onboarding!.progress.completed > 0 ? 'Continuar' : 'Começar'}
+          coverUrl={destaque.item.coverUrl}
+          href={`/curso/${destaque.item.slug}`}
+          textoBotao={destaque.item.progress.completed > 0 ? 'Continuar' : 'Começar'}
         />
       ) : continuar ? (
         <HeroBanner

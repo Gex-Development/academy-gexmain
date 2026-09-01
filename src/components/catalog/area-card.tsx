@@ -9,8 +9,8 @@ export function AreaCard({ area }: { area: AreaVitrine }) {
         className="group block overflow-hidden rounded-card focus:outline-none focus:ring-2 focus:ring-acao"
       >
         <div
-          className="relative aspect-[16/10] w-full overflow-hidden rounded-card border border-borda"
-          style={area.coverUrl ? undefined : { backgroundColor: area.color ?? '#353133' }}
+          className="relative aspect-[16/10] w-full overflow-hidden rounded-card border border-borda bg-capa-fundo"
+          style={area.color && !area.coverUrl ? { backgroundColor: area.color } : undefined}
         >
           {area.coverUrl && (
             // Capa é URL externa informada por quem administra; next/image
@@ -38,7 +38,7 @@ export function AreaCard({ area }: { area: AreaVitrine }) {
           )}
 
           <div className="absolute inset-x-0 bottom-0 p-4">
-            <p className="text-base font-bold leading-tight text-white">{area.name}</p>
+            <h3 className="text-base font-bold leading-tight text-white">{area.name}</h3>
             <p className="mt-1 text-xs text-white/75">
               {area.isOnboarding
                 ? `Trilha inicial · ${area.courseCount} ${area.courseCount === 1 ? 'aula' : 'aulas'}`

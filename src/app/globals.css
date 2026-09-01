@@ -47,6 +47,12 @@
   --color-sucesso: #1f8a4c;
   --color-aviso: #a86b00;
 
+  /* Fundo atrás de capa de curso e de área. Deliberadamente IGUAL nos dois
+     temas — não redefina em :root.dark. Sobre ele vai texto branco, e a
+     decisão de design desta fase é que a arte de capa não muda entre claro e
+     escuro; quem muda é a página em volta. */
+  --color-capa-fundo: #221f20;
+
   --radius-card: 0.75rem;
 }
 

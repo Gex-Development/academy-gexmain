@@ -16,10 +16,7 @@ export function HeroBanner({
   textoBotao: string
 }) {
   return (
-    <section
-      className="relative overflow-hidden rounded-card border border-borda"
-      style={coverUrl ? undefined : { backgroundColor: '#004EAC' }}
-    >
+    <section className="relative overflow-hidden rounded-card border border-borda bg-capa-fundo">
       {coverUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />

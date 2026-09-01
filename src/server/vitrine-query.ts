@@ -5,7 +5,7 @@
 // publicado com `access` calculado por curso, incluindo os bloqueados.
 // Agrupar e contar não consulta o banco e não decide acesso — a decisão de
 // acesso continua sendo só a de canAccessCourse, uma por curso.
-import type { Catalog } from './catalog-query'
+import type { Catalog, CatalogItem } from './catalog-query'
 
 export type AreaVitrine = {
   /** Chave estável de lista React: areaId, ou 'onboarding'. */
@@ -66,4 +66,34 @@ export function montarVitrine(catalog: Catalog): AreaVitrine[] {
   }
 
   return areas
+}
+
+/** O destaque no topo da home: no máximo um dos três, nunca inventado. */
+export type DestaqueHome =
+  | { tipo: 'trilha'; item: CatalogItem }
+  | { tipo: 'retomada' }
+  | { tipo: 'nenhum' }
+
+/**
+ * Decide o que ocupa o banner da home.
+ *
+ * Prioridade: a trilha inicial, enquanto pendente, vem antes de qualquer
+ * outra coisa — é a primeira coisa que a pessoa tem a fazer na empresa. Só
+ * quando ela não existe, já foi concluída, ou a pessoa não tem acesso (nível
+ * 'none') é que "continue de onde parou" assume. Sem os dois, não se inventa
+ * destaque: banner falso é pior que ausência de banner (fica com quem chama
+ * mostrar o cabeçalho de saudação nesse caso).
+ *
+ * `temRetomada` é só um booleano — a função não precisa saber a forma do
+ * "continue de onde parou" (isso é responsabilidade de getContinueWatching),
+ * só se ele existe.
+ */
+export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: boolean): DestaqueHome {
+  if (onboarding !== null && onboarding.access !== 'none' && onboarding.progress.percent < 100) {
+    return { tipo: 'trilha', item: onboarding }
+  }
+  if (temRetomada) {
+    return { tipo: 'retomada' }
+  }
+  return { tipo: 'nenhum' }
 }
