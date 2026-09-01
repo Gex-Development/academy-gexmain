@@ -8,9 +8,19 @@ describe('navLinksForRole', () => {
     expect(hrefs).toEqual(['/', '/perfil'])
   })
 
-  it('líder ganha gerenciar e a fila de dúvidas', () => {
+  it('líder ganha gerenciar, a fila de dúvidas e o painel de progresso', () => {
     const hrefs = navLinksForRole('leader').map((l) => l.href)
-    expect(hrefs).toEqual(['/', '/gerenciar', '/gerenciar/duvidas', '/perfil'])
+    expect(hrefs).toEqual(['/', '/gerenciar', '/gerenciar/duvidas', '/gerenciar/progresso', '/perfil'])
+  })
+
+  it('líder recebe /gerenciar/progresso, não /admin/progresso — o painel é dele também', () => {
+    // A rota do painel fica sob (manage), não (admin): o layout de (admin)
+    // redireciona quem não é admin, então um link para /admin/progresso
+    // levaria o líder a lugar nenhum. Esta asserção prova que a correção de
+    // rota pegou.
+    const hrefs = navLinksForRole('leader').map((l) => l.href)
+    expect(hrefs).toContain('/gerenciar/progresso')
+    expect(hrefs).not.toContain('/admin/progresso')
   })
 
   it('admin ganha as telas administrativas', () => {
@@ -19,10 +29,10 @@ describe('navLinksForRole', () => {
       '/',
       '/gerenciar',
       '/gerenciar/duvidas',
+      '/gerenciar/progresso',
       '/admin/pessoas',
       '/admin/areas',
       '/admin/solicitacoes',
-      '/admin/progresso',
       '/perfil',
     ])
   })

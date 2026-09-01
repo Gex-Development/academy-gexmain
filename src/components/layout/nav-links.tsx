@@ -8,13 +8,13 @@ const PERFIL: NavLink = { href: '/perfil', label: 'Perfil' }
 const GESTAO: NavLink[] = [
   { href: '/gerenciar', label: 'Gerenciar' },
   { href: '/gerenciar/duvidas', label: 'Dúvidas' },
+  { href: '/gerenciar/progresso', label: 'Progresso' },
 ]
 
 const ADMIN: NavLink[] = [
   { href: '/admin/pessoas', label: 'Pessoas' },
   { href: '/admin/areas', label: 'Áreas' },
   { href: '/admin/solicitacoes', label: 'Solicitações' },
-  { href: '/admin/progresso', label: 'Progresso' },
 ]
 
 /**
