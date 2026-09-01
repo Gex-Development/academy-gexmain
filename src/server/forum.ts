@@ -9,6 +9,7 @@ import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import {
   destinatariosDaDuvida,
+  escolherDestinatarios,
   paraForumQuestion,
   paraPendingQuestion,
   pertenceAFilaDoLider,
@@ -257,46 +258,33 @@ export async function askQuestion(
     // "sem líder" não pode virar "sem aviso": cai nos ADMINS ativos, a mesma
     // consulta que requestAccess já usa para a solicitação de acesso (ver
     // access-requests.ts). O mesmo fallback vale quando a área TEM líder mas
-    // nenhum está ativo (`status = 'inactive'`) — a lista de líderes vem
-    // vazia e o e-mail não pode simplesmente sumir junto com ela. A pergunta
-    // em si nunca depende disto: o INSERT acima já salvou, e ela aparece na
-    // fila de qualquer admin de qualquer forma (pertenceAFilaDoLider devolve
-    // true para admin) — o que faltava era quem é AVISADO.
+    // nenhum está ativo (`status = 'inactive'`), OU quando o único líder
+    // ativo da área é o próprio autor perguntando (achado da rodada 2). A
+    // pergunta em si nunca depende disto: o INSERT acima já salvou, e ela
+    // aparece na fila de qualquer admin de qualquer forma
+    // (pertenceAFilaDoLider devolve true para admin) — o que faltava era
+    // quem é AVISADO.
+    //
+    // As duas listas são buscadas eagerly (não só a de admins quando a de
+    // líderes falha): escolherDestinatarios (forum-query.ts) é pura e
+    // decide com as duas em mãos, para o teste exercitar exatamente a
+    // função que decide, não uma cópia da lógica de quando buscar cada
+    // lista. O custo é uma consulta a mais de quando a área já tem líder
+    // ativo suficiente — aceitável para o volume de um fórum interno.
     const admin = createAdminSupabase()
-    let candidatos: { id: string; email: string }[] = []
+    const [lideresRes, adminsRes] = await Promise.all([
+      ctx.areaId
+        ? admin
+            .from('profiles')
+            .select('id, email')
+            .eq('role', 'leader')
+            .eq('status', 'active')
+            .eq('area_id', ctx.areaId)
+        : Promise.resolve({ data: [] as { id: string; email: string }[] }),
+      admin.from('profiles').select('id, email').eq('role', 'admin').eq('status', 'active'),
+    ])
 
-    if (ctx.areaId) {
-      const { data: lideres } = await admin
-        .from('profiles')
-        .select('id, email')
-        .eq('role', 'leader')
-        .eq('status', 'active')
-        .eq('area_id', ctx.areaId)
-      candidatos = lideres ?? []
-    }
-
-    // A decisão em si (candidatos menos o próprio autor, por id) é
-    // destinatariosDaDuvida, em forum-query.ts — pura e testada em
-    // forum-query.test.ts; usada aqui para o teste cobrir o caminho real.
-    let destinatarios = destinatariosDaDuvida(candidatos, ctx.user.id)
-
-    // Cai nos admins ativos quando NINGUÉM sobra depois de excluir o autor
-    // — não quando `candidatos` já chegava vazio ANTES dessa exclusão
-    // (achado da rodada 2 da revisão): testar antes deixava um líder que é
-    // o único ativo da própria área, perguntando na própria área, sem
-    // aviso nenhum — `candidatos` tinha 1 elemento (ele mesmo), o fallback
-    // nunca disparava, e a exclusão de autor zerava `destinatarios` sem
-    // ninguém para substituí-lo. Testar DEPOIS cobre esse caso e os dois
-    // originais (sem área, ou área sem líder ativo algum) com a mesma
-    // condição.
-    if (destinatarios.length === 0) {
-      const { data: admins } = await admin
-        .from('profiles')
-        .select('id, email')
-        .eq('role', 'admin')
-        .eq('status', 'active')
-      destinatarios = destinatariosDaDuvida(admins ?? [], ctx.user.id)
-    }
+    const destinatarios = escolherDestinatarios(lideresRes.data ?? [], adminsRes.data ?? [], ctx.user.id)
 
     if (destinatarios.length > 0) {
       const conteudo = novaDuvidaEmail({

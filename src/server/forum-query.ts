@@ -189,6 +189,34 @@ export function destinatariosDaDuvida(
   return candidatos.filter((c) => c.id !== autorId).map((c) => c.email)
 }
 
+/**
+ * Escolhe entre a lista PRINCIPAL de candidatos e a de RESERVA — a decisão
+ * completa de askQuestion (rodada 3 da revisão): aplica destinatariosDaDuvida
+ * na lista principal (líderes ativos da área) e só recorre à reserva
+ * (admins ativos) se o resultado vier vazio DEPOIS de excluir o autor, não
+ * antes. Testar "candidatosPrincipais vazio" em vez de "resultado vazio"
+ * foi o bug da rodada 2: um líder que é o ÚNICO líder ativo da própria área,
+ * perguntando na própria área, tinha candidatosPrincipais com 1 elemento
+ * (ele mesmo) — o fallback nunca disparava, e a exclusão de autor zerava o
+ * resultado sem substituto. Aqui a mesma condição (`length === 0`) é
+ * avaliada só depois de já ter excluído o autor da lista principal, então
+ * esse caso cai na reserva corretamente.
+ *
+ * A reserva também passa pela mesma exclusão: se o autor for, ele mesmo, o
+ * único candidato de reserva (o admin perguntando, sem líder ativo na
+ * própria área), o resultado final é vazio — ninguém recebe o próprio texto
+ * de volta, nem pela lista principal nem pela de reserva.
+ */
+export function escolherDestinatarios(
+  candidatosPrincipais: { id: string; email: string }[],
+  candidatosDeReserva: { id: string; email: string }[],
+  autorId: string,
+): string[] {
+  const destinatarios = destinatariosDaDuvida(candidatosPrincipais, autorId)
+  if (destinatarios.length > 0) return destinatarios
+  return destinatariosDaDuvida(candidatosDeReserva, autorId)
+}
+
 // --- Fila de dúvidas do líder (src/server/forum.ts#listPendingQuestions) ---
 //
 // Mesmo motivo de tudo acima: listPendingQuestions mora num módulo

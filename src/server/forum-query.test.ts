@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   destinatariosDaDuvida,
+  escolherDestinatarios,
   paraForumQuestion,
   paraPendingQuestion,
   pertenceAFilaDoLider,
@@ -243,6 +244,51 @@ describe('destinatariosDaDuvida — quem recebe o e-mail de uma dúvida nova ou 
     expect(destinatariosDaDuvida(autorDaPergunta, 'pessoa-1')).toEqual([])
     // Outra pessoa respondendo: o autor da pergunta recebe.
     expect(destinatariosDaDuvida(autorDaPergunta, 'outra-pessoa')).toEqual(['pessoa@gexcorp.com.br'])
+  })
+})
+
+describe('escolherDestinatarios — principal vs. reserva (rodada 3: a regressão exata da rodada 2)', () => {
+  it('líder que é o ÚNICO líder ativo da área E é o autor: a principal fica vazia depois da exclusão, cai na reserva (admin)', () => {
+    // Reproduz o bug corrigido na rodada 2: candidatosPrincipais tem 1
+    // elemento (o próprio líder perguntando), então testar
+    // "candidatosPrincipais.length === 0" (ANTES de excluir o autor) nunca
+    // dispararia o fallback. escolherDestinatarios testa o RESULTADO da
+    // exclusão, não a lista de entrada.
+    const candidatosPrincipais = [{ id: 'lider-1', email: 'lider@gexcorp.com.br' }]
+    const candidatosDeReserva = [{ id: 'admin-1', email: 'admin@gexcorp.com.br' }]
+
+    expect(escolherDestinatarios(candidatosPrincipais, candidatosDeReserva, 'lider-1')).toEqual([
+      'admin@gexcorp.com.br',
+    ])
+  })
+
+  it('admin que é o próprio autor: não recebe o próprio texto de volta nem pela principal nem pela reserva', () => {
+    const candidatosPrincipais: { id: string; email: string }[] = []
+    const candidatosDeReserva = [{ id: 'admin-1', email: 'admin@gexcorp.com.br' }]
+
+    expect(escolherDestinatarios(candidatosPrincipais, candidatosDeReserva, 'admin-1')).toEqual([])
+  })
+
+  it('principal não vazia depois da exclusão: usa a principal, nunca consulta a reserva', () => {
+    const candidatosPrincipais = [
+      { id: 'lider-1', email: 'lider1@gexcorp.com.br' },
+      { id: 'lider-2', email: 'lider2@gexcorp.com.br' },
+    ]
+    const candidatosDeReserva = [{ id: 'admin-1', email: 'admin@gexcorp.com.br' }]
+
+    expect(escolherDestinatarios(candidatosPrincipais, candidatosDeReserva, 'lider-1')).toEqual([
+      'lider2@gexcorp.com.br',
+    ])
+  })
+
+  it('principal genuinamente vazia (sem área, ou área sem líder nenhum): cai direto na reserva', () => {
+    expect(
+      escolherDestinatarios([], [{ id: 'admin-1', email: 'admin@gexcorp.com.br' }], 'quem-perguntou'),
+    ).toEqual(['admin@gexcorp.com.br'])
+  })
+
+  it('as duas listas vazias: devolve vazio, sem lançar', () => {
+    expect(escolherDestinatarios([], [], 'quem-perguntou')).toEqual([])
   })
 })
 
