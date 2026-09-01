@@ -1644,7 +1644,23 @@ export async function listPendingQuestions(): Promise<PendingQuestion[]> {
 }
 ```
 
-- [ ] **Step 2: Criar a tela da fila**
+- [ ] **Step 2: Reativar a revalidação do cache nas ações do fórum**
+
+A Task 3 removeu `revalidatePath('/gerenciar/duvidas')` das ações de escrita do
+fórum, com razão: a rota não existia ainda e a chamada era inerte. **Agora ela
+existe** — é a página que você acabou de criar.
+
+Sem essa revalidação, o líder abre a fila e vê perguntas desatualizadas: uma
+dúvida recém-postada não aparece, e uma já resolvida continua listada, até que o
+cache expire por conta própria. A falha é silenciosa e parece "o sistema não
+avisou".
+
+Acrescente `revalidatePath('/gerenciar/duvidas')` em `src/server/forum.ts`, nas
+ações que mudam o que a fila mostra: criar pergunta, responder, e as de moderação
+que alteram `resolved_at`. Confirme abrindo a fila depois de postar uma dúvida em
+outra aba.
+
+- [ ] **Step 3: Criar a tela da fila**
 
 Crie `src/app/(manage)/gerenciar/duvidas/page.tsx`:
 
@@ -1705,12 +1721,12 @@ export default async function DuvidasPage() {
 }
 ```
 
-- [ ] **Step 3: Rodar tudo**
+- [ ] **Step 4: Rodar tudo**
 
 Run: `npm test && npm run typecheck && npm run build`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
