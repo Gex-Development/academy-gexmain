@@ -2155,7 +2155,21 @@ git commit -m "feat(acesso): solicitacao pelo cadeado e fila de aprovacao do adm
 
 **Files:**
 - Create: `src/server/dashboard.ts`
-- Create: `src/app/(admin)/admin/progresso/page.tsx`
+- Create: `src/app/(manage)/gerenciar/progresso/page.tsx`
+- Modify: `src/components/layout/nav-links.tsx`
+- Modify: `src/components/layout/nav-links.test.tsx`
+
+> **Correção de rota (o plano trazia `/admin/progresso` e estava errado).** A spec
+> diz duas vezes que o painel é do admin **e do líder** (§Funcionalidades: "Painel
+> de acompanhamento para admin e líder"; tabela de papéis: o líder "vê o progresso
+> dos cursos da sua área"), e a política `progresso_gestao` da migration `0003` foi
+> escrita para isso — o comentário dela diz "líder e admin leem para o painel". Mas
+> a lista de rotas da spec pôs `/admin/progresso` na seção do Admin, e o layout
+> `src/app/(admin)/layout.tsx` redireciona quem não é admin. Sob `(admin)` o líder
+> nunca chegaria à página, e os dois ramos `atual.role === 'admin' || ... areaId`
+> do `dashboard.ts` seriam código morto. A rota passa a ser
+> `/gerenciar/progresso`, sob `(manage)`, cuja guarda é admin **ou** líder ativo. O
+> admin não perde nada: ele também entra em `/gerenciar/*`.
 
 **Interfaces:**
 - Consumes: `getCurrentUser`, `canAccessCourse`, `progressPercent`, `createAdminSupabase`.
@@ -2371,7 +2385,7 @@ export async function getDashboard(): Promise<{ pessoas: PersonProgress[]; curso
 
 - [ ] **Step 2: Criar a tela do painel**
 
-Crie `src/app/(admin)/admin/progresso/page.tsx`:
+Crie `src/app/(manage)/gerenciar/progresso/page.tsx`:
 
 ```typescript
 import { ProgressBar } from '@/components/progress/progress-bar'
@@ -2457,12 +2471,36 @@ export default async function ProgressoPage() {
 }
 ```
 
-- [ ] **Step 3: Rodar tudo**
+- [ ] **Step 3: Levar o link do painel para quem agora alcança a rota**
+
+`src/components/layout/nav-links.tsx` hoje lista `/admin/progresso` em `ADMIN`,
+que só o admin enxerga. Com a rota em `/gerenciar/progresso`, o link tem de sair
+de `ADMIN` e entrar em `GESTAO`, que é a lista mostrada a admin e a líder:
+
+```typescript
+const GESTAO: NavLink[] = [
+  { href: '/gerenciar', label: 'Gerenciar' },
+  { href: '/gerenciar/duvidas', label: 'Dúvidas' },
+  { href: '/gerenciar/progresso', label: 'Progresso' },
+]
+
+const ADMIN: NavLink[] = [
+  { href: '/admin/pessoas', label: 'Pessoas' },
+  { href: '/admin/areas', label: 'Áreas' },
+  { href: '/admin/solicitacoes', label: 'Solicitações' },
+]
+```
+
+`src/components/layout/nav-links.test.tsx` já cobre os três papéis; ajuste as
+expectativas e acrescente uma asserção de que o líder recebe
+`/gerenciar/progresso` — é a asserção que prova que a correção de rota pegou.
+
+- [ ] **Step 4: Rodar tudo**
 
 Run: `npm test && npm run typecheck && npm run build`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
