@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { canAccessCourse } from '@/lib/access'
 import { getCurrentUser } from '@/lib/auth/session'
 import { ATTACHMENT_BUCKET } from '@/lib/storage/attachments'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { decideAttachmentDownload } from './attachment-access'
 
 /**
  * Entrega o anexo por link assinado de 60 segundos, e só depois de confirmar
@@ -17,20 +17,6 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
   if (!user) return NextResponse.json({ erro: 'Não autenticado.' }, { status: 401 })
 
   const admin = createAdminSupabase()
-  const { data: anexo } = await admin
-    .from('lesson_attachments')
-    .select('storage_path, lessons(course_id, status, courses(id, area_id, status, is_onboarding))')
-    .eq('id', id)
-    .maybeSingle()
-
-  if (!anexo) return NextResponse.json({ erro: 'Anexo não encontrado.' }, { status: 404 })
-
-  const aula = anexo.lessons as unknown as {
-    status: string
-    courses: { id: string; area_id: string | null; status: string; is_onboarding: boolean }
-  }
-  const curso = aula.courses
-
   const supabase = await createServerSupabase()
   const { data: liberacoes } = await supabase
     .from('course_access')
@@ -38,25 +24,12 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     .eq('user_id', user.id)
   const liberados = new Set((liberacoes ?? []).map((l) => l.course_id))
 
-  const nivel = canAccessCourse(
-    user,
-    {
-      id: curso.id,
-      areaId: curso.area_id,
-      status: curso.status as 'draft' | 'published',
-      isOnboarding: curso.is_onboarding,
-    },
-    liberados,
-  )
-
-  // Aula em rascunho só é baixável por quem gerencia o curso.
-  if (nivel === 'none' || (aula.status !== 'published' && nivel !== 'manage')) {
-    return NextResponse.json({ erro: 'Sem acesso a este material.' }, { status: 403 })
-  }
+  const decisao = await decideAttachmentDownload(admin, liberados, user, id)
+  if (!decisao.ok) return NextResponse.json({ erro: decisao.erro }, { status: decisao.status })
 
   const { data: assinado, error } = await admin.storage
     .from(ATTACHMENT_BUCKET)
-    .createSignedUrl(anexo.storage_path, 60)
+    .createSignedUrl(decisao.storagePath, 60)
 
   if (error || !assinado) {
     return NextResponse.json({ erro: 'Não foi possível gerar o download.' }, { status: 500 })

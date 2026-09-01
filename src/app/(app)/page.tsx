@@ -25,7 +25,7 @@ export default async function HomePage() {
       )}
 
       {catalog.grupos.map((grupo) => (
-        <section key={grupo.areaName}>
+        <section key={grupo.groupKey}>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
             {grupo.areaName}
           </h2>

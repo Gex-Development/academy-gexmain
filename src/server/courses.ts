@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { canAccessCourse } from '@/lib/access'
 import { assertRole } from '@/lib/auth/guards'
 import { getCurrentUser } from '@/lib/auth/session'
 import { slugify } from '@/lib/slug'
@@ -50,9 +51,14 @@ export async function getManagedCourse(id: string): Promise<ManagedCourse | null
   if (!data) return null
 
   const curso = paraManagedCourse(data as unknown as LinhaCurso)
-  if (user.role === 'admin') return curso
-  if (user.areaId && curso.areaId === user.areaId) return curso
-  return null
+  // Mesma regra de "quem gerencia" que canAccessCourse já centraliza — nada
+  // aqui reimplementa a comparação de papel/área à mão. Conjunto de
+  // liberações vazio de propósito: uma liberação individual (course_access)
+  // nunca eleva o nível além de 'view' (regra 7 de canAccessCourse), então é
+  // irrelevante para a pergunta "isto é 'manage'?" — e evita uma consulta a
+  // mais só para descartar o resultado. O early return de role === 'member'
+  // acima garante que só admin/líder chegam aqui.
+  return canAccessCourse(user, curso, new Set()) === 'manage' ? curso : null
 }
 
 const cursoSchema = z.object({

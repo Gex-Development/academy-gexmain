@@ -21,6 +21,10 @@ export type CatalogItem = {
   title: string
   description: string | null
   coverUrl: string | null
+  // Id da área — a chave ESTÁVEL de agrupamento (ver montarCatalogo). areaName
+  // é só o rótulo de exibição: areas.name não tem constraint de unicidade
+  // nenhuma (só areas.slug tem), então duas áreas podem ter o mesmo nome.
+  areaId: string | null
   areaName: string | null
   areaColor: string | null
   // Posição da ÁREA (areas.position — "Posição — Ordem na vitrine" em
@@ -42,7 +46,11 @@ export type CatalogItem = {
 
 export type Catalog = {
   onboarding: CatalogItem | null
-  grupos: { areaName: string; items: CatalogItem[] }[]
+  // groupKey é a chave estável (areaId, ou o rótulo fixo do grupo "Outros")
+  // — existe para servir de `key` de lista na UI. Duas áreas com o mesmo
+  // areaName (nome não é único) não podem compartilhar key de React, ou uma
+  // das duas seções some/pisca na re-renderização.
+  grupos: { groupKey: string; areaName: string; items: CatalogItem[] }[]
 }
 
 export const SELECT_CATALOGO =
@@ -81,6 +89,7 @@ export function paraCatalogItem(
     title: row.title,
     description: row.description,
     coverUrl: row.cover_url,
+    areaId: row.area_id,
     areaName: row.areas?.name ?? null,
     areaColor: row.areas?.color ?? null,
     areaPosition: row.areas?.position ?? null,
@@ -114,6 +123,14 @@ function porPosicaoDepoisTitulo(a: { position: number; title: string }, b: { pos
 /**
  * Separa a trilha inicial (se houver) e agrupa o resto por área.
  *
+ * Agrupa por areaId, não por areaName: `areas.name` não tem constraint de
+ * unicidade nenhuma (só `areas.slug` tem), e updateArea nunca toca o slug —
+ * então renomear uma área para o nome de outra já existente não dá erro
+ * nenhum. Agrupar pelo nome fundiria os cursos das duas áreas sob um único
+ * cabeçalho, com a posição de exibição decidida por qual item chegou
+ * primeiro no Map (não determinístico). areaId é a chave estável de
+ * verdade; areaName continua sendo só o RÓTULO de exibição do grupo.
+ *
  * Cada grupo carrega a posição da SUA área (não a de um item qualquer do
  * grupo, para não depender de qual item foi inserido primeiro no Map) — é o
  * que permite ordenar os grupos pela mesma coluna `areas.position` que
@@ -126,16 +143,17 @@ function porPosicaoDepoisTitulo(a: { position: number; title: string }, b: { pos
 export function montarCatalogo(items: CatalogItem[]): Catalog {
   const onboarding = items.find((i) => i.isOnboarding) ?? null
 
-  type Grupo = { areaName: string; areaPosition: number | null; items: CatalogItem[] }
+  const SEM_AREA = '__sem_area__'
+  type Grupo = { groupKey: string; areaName: string; areaPosition: number | null; items: CatalogItem[] }
   const porArea = new Map<string, Grupo>()
 
   for (const item of items) {
     if (item.isOnboarding) continue
-    const chave = item.areaName ?? 'Outros'
+    const chave = item.areaId ?? SEM_AREA
 
     let grupo = porArea.get(chave)
     if (!grupo) {
-      grupo = { areaName: chave, areaPosition: item.areaPosition, items: [] }
+      grupo = { groupKey: chave, areaName: item.areaName ?? 'Outros', areaPosition: item.areaPosition, items: [] }
       porArea.set(chave, grupo)
     }
     grupo.items.push(item)
@@ -150,6 +168,7 @@ export function montarCatalogo(items: CatalogItem[]): Catalog {
         a.areaName.localeCompare(b.areaName, 'pt-BR'),
     )
     .map((grupo) => ({
+      groupKey: grupo.groupKey,
       areaName: grupo.areaName,
       items: [...grupo.items].sort(porPosicaoDepoisTitulo),
     }))

@@ -8,6 +8,7 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { ATTACHMENT_BUCKET } from '@/lib/storage/attachments'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { podeVerAnexosDaAula } from './attachments-query'
 import { mintAttachmentUpload, verifyAndRegisterAttachment } from './attachments-upload'
 import { getLessonForEdit } from './lessons'
 import { ok, toActionError, type ActionResult } from './result'
@@ -63,7 +64,7 @@ export async function listAttachments(lessonId: string): Promise<AttachmentRow[]
   )
 
   // Aula em rascunho: material só para quem gerencia o curso.
-  if (nivel === 'none' || (aula.status !== 'published' && nivel !== 'manage')) return []
+  if (!podeVerAnexosDaAula(aula.status, nivel)) return []
 
   const supabase = await createServerSupabase()
   const { data } = await supabase
