@@ -2,58 +2,26 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import type { CourseStatus } from '@/lib/access'
 import { assertRole } from '@/lib/auth/guards'
 import { getCurrentUser } from '@/lib/auth/session'
 import { slugify } from '@/lib/slug'
 import { createServerSupabase } from '@/lib/supabase/server'
+import {
+  paraManagedCourse,
+  podePublicar,
+  SELECT_CURSO,
+  type LinhaCurso,
+  type ManagedCourse,
+} from './courses-query'
 import { ok, toActionError, type ActionResult } from './result'
 
-export type ManagedCourse = {
-  id: string
-  slug: string
-  title: string
-  description: string | null
-  coverUrl: string | null
-  status: CourseStatus
-  isOnboarding: boolean
-  areaId: string | null
-  areaName: string | null
-  lessonCount: number
-  publishedLessonCount: number
-}
-
-const SELECT_CURSO =
-  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name), lessons(id, status)'
-
-type LinhaCurso = {
-  id: string
-  slug: string
-  title: string
-  description: string | null
-  cover_url: string | null
-  status: string
-  is_onboarding: boolean
-  area_id: string | null
-  areas: { name: string } | null
-  lessons: { id: string; status: string }[]
-}
-
-function paraManagedCourse(row: LinhaCurso): ManagedCourse {
-  return {
-    id: row.id,
-    slug: row.slug,
-    title: row.title,
-    description: row.description,
-    coverUrl: row.cover_url,
-    status: row.status as CourseStatus,
-    isOnboarding: row.is_onboarding,
-    areaId: row.area_id,
-    areaName: row.areas?.name ?? null,
-    lessonCount: row.lessons.length,
-    publishedLessonCount: row.lessons.filter((l) => l.status === 'published').length,
-  }
-}
+// Um arquivo 'use server' só pode exportar funções async (Next.js recusa o
+// build inteiro se algum export não for) — por isso a consulta, o mapeamento
+// e a regra de publicação moraram para courses-query.ts, e aqui só o tipo
+// (apagado em tempo de compilação, não conta como export de runtime) é
+// reexportado, para quem já importa `type ManagedCourse` daqui continuar
+// funcionando.
+export type { ManagedCourse }
 
 /** Cursos que o usuário atual pode editar: os da sua área, ou todos, se admin. */
 export async function listManagedCourses(): Promise<ManagedCourse[]> {
@@ -91,6 +59,16 @@ const cursoSchema = z.object({
   title: z.string().trim().min(3, 'O título precisa de ao menos 3 caracteres.').max(120),
   description: z.string().trim().max(600).optional().or(z.literal('')),
   coverUrl: z.string().trim().url('A capa precisa ser uma URL válida.').optional().or(z.literal('')),
+  // Só createCourse usa estes dois — updateCourse reenvia o mesmo schema, mas
+  // seu formulário nunca inclui estes campos, então .optional() os deixa
+  // ausentes sem quebrar o parse. Checkbox de formulário chega como 'on'
+  // (marcado) ou ausente (desmarcado) — nunca outro valor por um form normal,
+  // mas .string().optional() ainda assim faz o campo passar por Zod, em vez
+  // de ser lido cru do FormData, mesmo quando um POST malicioso manda outra
+  // coisa: o "!== 'on'" abaixo trata qualquer valor fora de 'on' como
+  // desmarcado, igual ao comportamento anterior.
+  isOnboarding: z.string().optional(),
+  areaId: z.string().uuid('Área inválida.').optional().or(z.literal('')),
 })
 
 export async function createCourse(
@@ -103,13 +81,13 @@ export async function createCourse(
     const parsed = cursoSchema.safeParse(Object.fromEntries(formData))
     if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
-    const isOnboarding = formData.get('isOnboarding') === 'on'
+    const isOnboarding = parsed.data.isOnboarding === 'on'
     if (isOnboarding && user.role !== 'admin') {
       return { ok: false, error: 'Somente o administrador cria a trilha inicial.' }
     }
 
     // Admin escolhe a área no formulário; líder cria sempre na própria área.
-    const areaIdBruto = user.role === 'admin' ? String(formData.get('areaId') ?? '') : user.areaId
+    const areaIdBruto = user.role === 'admin' ? parsed.data.areaId ?? '' : user.areaId
     const areaId = isOnboarding ? null : areaIdBruto || null
     if (!isOnboarding && !areaId) {
       return { ok: false, error: 'Escolha a área do curso.' }
@@ -135,7 +113,14 @@ export async function createCourse(
       .single()
 
     if (error) {
-      if (error.message.includes('courses_uma_trilha_inicial')) {
+      // 'courses' tem duas constraints únicas (slug, e o índice parcial que
+      // permite só uma trilha inicial) — as duas levantam 23505. Por isso o
+      // código sozinho não basta para decidir qual mensagem mostrar (ao
+      // contrário de areas.ts, que só tem uma constraint única e onde o
+      // código isolado já é inequívoco): precisa ancorar no código estável
+      // E discriminar pelo nome da constraint, ou uma colisão de slug comum
+      // mostraria "já existe uma trilha inicial" para quem só bateu o slug.
+      if (error.code === '23505' && error.message.includes('courses_uma_trilha_inicial')) {
         return { ok: false, error: 'Já existe uma trilha inicial na plataforma.' }
       }
       throw error
@@ -202,8 +187,7 @@ export async function setCourseStatus(
     const curso = await getManagedCourse(parsed.data.id)
     if (!curso) return { ok: false, error: 'Você não tem permissão para editar este curso.' }
 
-    // Capa bonita levando a curso vazio é pior do que curso nenhum.
-    if (parsed.data.status === 'published' && curso.publishedLessonCount === 0) {
+    if (parsed.data.status === 'published' && !podePublicar(curso)) {
       return { ok: false, error: 'Publique ao menos uma aula antes de publicar o curso.' }
     }
 
