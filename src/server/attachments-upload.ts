@@ -46,6 +46,19 @@ export type RegisterAttachmentInput = {
   uploadedBy: string
 }
 
+/** Linha existente para um storage_path, se houver — usado para tratar uma confirmação repetida como idempotente, não como erro. */
+async function buscarAnexoPorCaminho(
+  admin: AdminClient,
+  path: string,
+): Promise<{ id: string; lessonId: string } | null> {
+  const { data } = await admin
+    .from('lesson_attachments')
+    .select('id, lesson_id')
+    .eq('storage_path', path)
+    .maybeSingle()
+  return data ? { id: data.id, lessonId: data.lesson_id } : null
+}
+
 /**
  * Confirma o upload feito direto pelo navegador e só então cria a linha.
  * Não confia no tamanho nem no tipo que o cliente declarou ao pedir a URL —
@@ -59,6 +72,12 @@ export type RegisterAttachmentInput = {
  *
  * Em caso de falha (validação ou erro ao gravar a linha), remove o objeto do
  * bucket — mesma lógica de rollback que já existia no upload de servidor.
+ * EXCETO quando o "erro" é a linha já existir (storage_path é único): uma
+ * segunda confirmação para o MESMO upload não é uma falha — é rede lenta ou
+ * um cliente que reenviou por não ter visto a resposta a tempo — e nesse
+ * caso o objeto pertence à confirmação ANTERIOR, já persistida. Removê-lo
+ * destruiria um anexo que já funcionava; por isso o caminho de "já existe"
+ * devolve sucesso (idempotente) em vez de cair no rollback genérico.
  */
 export async function verifyAndRegisterAttachment(
   admin: AdminClient,
@@ -66,6 +85,18 @@ export async function verifyAndRegisterAttachment(
 ): Promise<ActionResult<{ id: string }>> {
   if (!input.path.startsWith(`${input.lessonId}/`)) {
     return fail('Caminho de upload inválido.')
+  }
+
+  // Confirmação repetida do mesmo upload: a linha já existe, o objeto já é
+  // dela — não há nada a inserir, e nada a remover. Checado ANTES do
+  // insert para não depender só do código de erro da constraint única.
+  const existente = await buscarAnexoPorCaminho(admin, input.path)
+  if (existente) {
+    if (existente.lessonId === input.lessonId) return ok({ id: existente.id })
+    // Colisão de storage_path que não é nossa: não deveria acontecer (o
+    // caminho é único por construção — prefixo da aula + uuid aleatório) —
+    // mas por segurança não mexe num objeto que não sabe se é seu.
+    return fail('Não foi possível confirmar o envio do arquivo.')
   }
 
   const { data: info, error: infoError } = await admin.storage.from(ATTACHMENT_BUCKET).info(input.path)
@@ -93,7 +124,19 @@ export async function verifyAndRegisterAttachment(
     .single()
 
   if (error) {
-    // Sem a linha no banco o arquivo fica órfão no bucket: remove.
+    if (error.code === '23505') {
+      // Corrida: outra confirmação para o mesmo caminho terminou entre o
+      // cheque acima e este insert. Mesmo raciocínio — a linha já existe,
+      // não é erro, e o objeto não é nosso para remover.
+      const existenteAgora = await buscarAnexoPorCaminho(admin, input.path)
+      if (existenteAgora && existenteAgora.lessonId === input.lessonId) {
+        return ok({ id: existenteAgora.id })
+      }
+      return fail('Não foi possível confirmar o envio do arquivo.')
+    }
+
+    // Qualquer outro erro: sem a linha no banco o arquivo fica órfão no
+    // bucket, remove.
     await admin.storage.from(ATTACHMENT_BUCKET).remove([input.path])
     throw error
   }

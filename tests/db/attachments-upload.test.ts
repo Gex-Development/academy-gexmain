@@ -338,4 +338,74 @@ describe('verifyAndRegisterAttachment: valida o que o Storage recebeu, não o qu
     },
     60_000,
   )
+
+  // Achado de revisão: verifyAndRegisterAttachment não checava se a linha já
+  // existia antes de inserir, e tratava QUALQUER erro de insert (inclusive a
+  // violação da constraint única de storage_path) removendo o objeto. Uma
+  // segunda confirmação do MESMO upload — rede lenta, cliente que reenvia
+  // por não ter visto a resposta a tempo — batia nessa constraint (a
+  // primeira confirmação já tinha criado a linha) e o rollback do "erro
+  // genérico" apagava o objeto que a PRIMEIRA confirmação, já bem-sucedida,
+  // aponta: a linha sobrevivia, mas órfã — aparecia na lista, e todo
+  // download falhava. Não podia acontecer no upload por servidor de antes
+  // (cada chamada gerava um caminho novo, com um uuid aleatório — nunca
+  // colidia consigo mesma); passou a poder no desenho de duas etapas, porque
+  // agora o MESMO caminho, mintado uma vez, é reaproveitado entre o upload e
+  // a confirmação, e nada impede a confirmação de ser tentada mais de uma
+  // vez para o mesmo caminho.
+  it('confirmar o mesmo upload duas vezes é idempotente — não derruba o anexo já registrado', async () => {
+    const mint = await mintAttachmentUpload(db, aulaId, {
+      name: 'duplicado.pdf',
+      type: 'application/pdf',
+      size: 1024,
+    })
+    expect(mint.ok).toBe(true)
+    if (!mint.ok) return
+
+    const arquivo = new File([new Uint8Array(1024)], 'duplicado.pdf', { type: 'application/pdf' })
+    const cliente = await authClient(emailLider)
+    const { error: erroUpload } = await cliente.storage
+      .from(ATTACHMENT_BUCKET)
+      .uploadToSignedUrl(mint.data.path, mint.data.token, arquivo, { contentType: 'application/pdf' })
+    expect(erroUpload).toBeNull()
+    caminhosParaLimpar.push(mint.data.path)
+
+    const primeiraConfirmacao = await verifyAndRegisterAttachment(db, {
+      lessonId: aulaId,
+      path: mint.data.path,
+      fileName: 'duplicado.pdf',
+      uploadedBy: liderId,
+    })
+    expect(primeiraConfirmacao.ok).toBe(true)
+    if (!primeiraConfirmacao.ok) return
+
+    // A segunda confirmação do MESMO upload precisa "funcionar" (ser
+    // idempotente), não falhar — e, principalmente, não pode remover o
+    // objeto que a primeira confirmação já persistiu.
+    const segundaConfirmacao = await verifyAndRegisterAttachment(db, {
+      lessonId: aulaId,
+      path: mint.data.path,
+      fileName: 'duplicado.pdf',
+      uploadedBy: liderId,
+    })
+    expect(segundaConfirmacao.ok).toBe(true)
+    if (segundaConfirmacao.ok) {
+      expect(segundaConfirmacao.data.id).toBe(primeiraConfirmacao.data.id)
+    }
+
+    // Exatamente uma linha, não duas.
+    const { data: linhas } = await db
+      .from('lesson_attachments')
+      .select('id')
+      .eq('storage_path', mint.data.path)
+    expect(linhas).toHaveLength(1)
+
+    // A parte que importa: o objeto SOBREVIVE no bucket depois da segunda
+    // confirmação — é exatamente o que quebrava antes desta correção.
+    const { data: infoDepois, error: infoError } = await db.storage
+      .from(ATTACHMENT_BUCKET)
+      .info(mint.data.path)
+    expect(infoError).toBeNull()
+    expect(infoDepois).not.toBeNull()
+  })
 })

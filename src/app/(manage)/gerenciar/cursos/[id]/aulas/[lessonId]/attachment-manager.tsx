@@ -4,7 +4,7 @@ import { useActionState, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
-import { ALLOWED_ATTACHMENT_MIME, ATTACHMENT_BUCKET } from '@/lib/storage/attachments'
+import { ALLOWED_ATTACHMENT_MIME, ATTACHMENT_BUCKET, validateAttachment } from '@/lib/storage/attachments'
 import { createBrowserSupabase } from '@/lib/supabase/client'
 import {
   confirmAttachmentUpload,
@@ -45,6 +45,19 @@ export function AttachmentManager({
     const input = form.elements.namedItem('file') as HTMLInputElement | null
     const file = input?.files?.[0]
     if (!file) return
+
+    // Mesma função pura que o servidor usa (validateAttachment), rodada aqui
+    // antes de mintar: dá a mensagem específica — tipo errado, acima de
+    // 50 MB — na hora, sem esperar o round-trip do mint. Não é a barreira de
+    // verdade (createAttachmentUpload e verifyAndRegisterAttachment validam
+    // de novo no servidor, contra o que o Storage realmente recebeu) — é só
+    // o motivo de o erro de uploadToSignedUrl, mais abaixo, poder continuar
+    // genérico: o caso específico já foi pego aqui.
+    const erroValidacao = validateAttachment({ name: file.name, type: file.type, size: file.size })
+    if (erroValidacao) {
+      setErroEnvio(erroValidacao)
+      return
+    }
 
     setEnviando(true)
     setErroEnvio(null)
