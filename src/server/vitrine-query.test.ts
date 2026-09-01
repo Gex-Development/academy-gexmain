@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog, CatalogItem } from './catalog-query'
-import { escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
+import { capaDoCurso, escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
 
 function item(over: Partial<CatalogItem> = {}): CatalogItem {
   return {
@@ -158,6 +158,43 @@ describe('escolherDestaque', () => {
 
   it('sem trilha e sem retomada → nenhum', () => {
     expect(escolherDestaque(null, false)).toEqual({ tipo: 'nenhum' })
+  })
+})
+
+describe('capaDoCurso', () => {
+  it('encontra a capa de um curso dentro de um grupo de área', () => {
+    const catalog = catalogo([
+      grupo({ items: [item({ slug: 'curso-a', coverUrl: 'https://exemplo.test/a.png' })] }),
+    ])
+
+    expect(capaDoCurso(catalog, 'curso-a')).toBe('https://exemplo.test/a.png')
+  })
+
+  it('encontra a capa quando o curso é a trilha inicial', () => {
+    const catalog = catalogo([], item({ isOnboarding: true, slug: 'trilha', coverUrl: 'https://exemplo.test/onb.png' }))
+
+    expect(capaDoCurso(catalog, 'trilha')).toBe('https://exemplo.test/onb.png')
+  })
+
+  it('curso sem capa cadastrada devolve null, não string vazia', () => {
+    const catalog = catalogo([grupo({ items: [item({ slug: 'curso-a', coverUrl: null })] })])
+
+    expect(capaDoCurso(catalog, 'curso-a')).toBeNull()
+  })
+
+  it('slug que não aparece em nenhum grupo nem na trilha devolve null — não lança', () => {
+    const catalog = catalogo([grupo({ items: [item({ slug: 'curso-a' })] })])
+
+    expect(capaDoCurso(catalog, 'nao-existe')).toBeNull()
+  })
+
+  it('procura em todos os grupos, não só no primeiro', () => {
+    const catalog = catalogo([
+      grupo({ groupKey: 'a1', items: [item({ id: 'c1', slug: 'curso-a' })] }),
+      grupo({ groupKey: 'a2', items: [item({ id: 'c2', slug: 'curso-b', coverUrl: 'https://exemplo.test/b.png' })] }),
+    ])
+
+    expect(capaDoCurso(catalog, 'curso-b')).toBe('https://exemplo.test/b.png')
   })
 })
 

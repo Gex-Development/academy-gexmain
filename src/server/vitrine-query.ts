@@ -99,6 +99,35 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
 }
 
 /**
+ * A capa do curso de `slug`, procurada no catálogo já carregado.
+ *
+ * Existe para o banner "Continue de onde parou" da home: a §5.1.2 da spec
+ * pede a capa do CURSO, mas getContinueWatching() (src/server/progress.ts)
+ * não devolve capa — não é responsabilidade dela, só diz qual é a próxima
+ * aula. Quem chama (a home) já tem o catálogo inteiro em memória na mesma
+ * requisição, então procurar o slug aqui é trabalho de função pura: nenhuma
+ * consulta nova.
+ *
+ * Olha o onboarding também, não só os grupos por área: o curso "continue de
+ * onde parou" pode ser a própria trilha inicial (ela também acumula
+ * progresso e pode aparecer aqui quando não é mais o destaque do banner —
+ * ver escolherDestaque). `null` quando o slug não aparece em lugar nenhum
+ * do catálogo — não deveria acontecer (getContinueWatching só devolve curso
+ * que o próprio getCourseView confirmou acessível), mas cai de volta para
+ * "sem capa" em vez de lançar.
+ */
+export function capaDoCurso(catalog: Catalog, slug: string): string | null {
+  if (catalog.onboarding?.slug === slug) return catalog.onboarding.coverUrl
+
+  for (const grupo of catalog.grupos) {
+    const item = grupo.items.find((i) => i.slug === slug)
+    if (item) return item.coverUrl
+  }
+
+  return null
+}
+
+/**
  * A fileira "Continue de onde parou" de uma página de área.
  *
  * Um curso entra quando a pessoa ainda tem acesso a ele, já começou

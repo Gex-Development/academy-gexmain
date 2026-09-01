@@ -3,7 +3,7 @@ import { HeroBanner } from '@/components/catalog/hero-banner'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getCatalog } from '@/server/catalog'
 import { getContinueWatching } from '@/server/progress'
-import { escolherDestaque, montarVitrine } from '@/server/vitrine-query'
+import { capaDoCurso, escolherDestaque, montarVitrine } from '@/server/vitrine-query'
 
 export const metadata = { title: 'Início — GEX Academy' }
 
@@ -37,6 +37,15 @@ export default async function HomePage() {
             `${destaque.item.lessonCount} ${destaque.item.lessonCount === 1 ? 'aula' : 'aulas'} sobre a empresa`
           }
           coverUrl={destaque.item.coverUrl}
+          // DESVIO DE SPEC, registrado (tabela §3 de
+          // docs/superpowers/specs/2026-09-01-gex-academy-vitrine-design.md):
+          // a §5.1.1 pede que o botão aponte para a PRÓXIMA AULA NÃO
+          // CONCLUÍDA, não para o índice do curso. Resolver isso direito
+          // exige uma consulta nova nesta página (lista de aulas do curso +
+          // progresso, algo como getCourseView(destaque.item.slug) — o
+          // catalog não carrega aula nenhuma, de propósito, ver o comentário
+          // em catalog.ts) — por isso ficou só registrado, não implementado,
+          // até essa consulta ser aprovada.
           href={`/curso/${destaque.item.slug}`}
           textoBotao={destaque.item.progress.completed > 0 ? 'Continuar' : 'Começar'}
         />
@@ -45,7 +54,13 @@ export default async function HomePage() {
           rotulo="Continue de onde parou"
           titulo={continuar.lessonTitle}
           subtitulo={continuar.courseTitle}
-          coverUrl={null}
+          // A §5.1.2 da spec pede a capa do CURSO aqui. getContinueWatching
+          // não devolve capa (não é dela); o catalog já está inteiro em
+          // memória nesta mesma requisição, então capaDoCurso só procura o
+          // slug nele — zero consulta nova (ver o comentário em
+          // vitrine-query.ts). Como o banco real não tem trilha inicial
+          // hoje, este é o banner que a maioria das pessoas vai ver.
+          coverUrl={capaDoCurso(catalog, continuar.courseSlug)}
           href={`/curso/${continuar.courseSlug}/aula/${continuar.lessonSlug}`}
           textoBotao="Continuar"
         />
