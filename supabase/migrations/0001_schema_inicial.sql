@@ -88,6 +88,18 @@ create table public.lesson_attachments (
 create index lesson_attachments_lesson_id_idx on public.lesson_attachments(lesson_id);
 
 -- Liberações individuais concedidas pelo admin
+--
+-- `profiles` tem DUAS chaves estrangeiras aqui — `user_id` (quem recebeu) e
+-- `granted_by` (quem concedeu) — mesmo formato de `access_requests`
+-- (`user_id`/`decided_by`, mais abaixo neste arquivo), que quebrou inteira em
+-- produção (PostgREST PGRST201, HTTP 300) porque um embed `profiles(...)`
+-- sem qualificar qual FK usar é AMBÍGUO. Hoje nenhum código embute
+-- `profiles(...)` a partir de `course_access` (todo lugar lê colunas
+-- simples), então não há bug — mas se algo um dia mostrar "quem liberou este
+-- curso", o embed certo é `profiles!course_access_user_id_fkey(...)`
+-- (ou `!course_access_granted_by_fkey` para o outro lado), nunca
+-- `profiles(...)` sozinho. Ver access-requests-query.ts para o mesmo padrão
+-- já resolvido.
 create table public.course_access (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null references public.profiles(id) on delete cascade,

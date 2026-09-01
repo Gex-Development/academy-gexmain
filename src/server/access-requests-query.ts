@@ -6,7 +6,7 @@
 // em vez de uma reimplementada à parte.
 //
 // `profiles` tem DUAS chaves estrangeiras em `access_requests` — `user_id` e
-// `decided_by` (0001_schema_inicial.sql, linhas 104 e 108). Um embed
+// `decided_by` (0001_schema_inicial.sql, linhas 116 e 120). Um embed
 // `profiles(...)` sem qualificar qual delas é AMBÍGUO para o PostgREST: a
 // API devolve HTTP 300 (PGRST201) em vez de dados. Foi exatamente o defeito
 // da primeira versão desta tarefa — silencioso porque quem chamava descartava
