@@ -23,8 +23,19 @@ export type CatalogItem = {
   coverUrl: string | null
   areaName: string | null
   areaColor: string | null
+  // Posição da ÁREA (areas.position — "Posição — Ordem na vitrine" em
+  // /admin/areas). null só para a trilha inicial (área nula por definição) e
+  // para um curso órfão sem área; os dois casos não competem pela ordenação
+  // por posição de área (o primeiro tem seção própria, o segundo cai no
+  // grupo "Outros", ver montarCatalogo).
+  areaPosition: number | null
   isOnboarding: boolean
   lessonCount: number
+  // Posição do próprio CURSO (courses.position) — mesmo campo que
+  // listManagedCourses já usa para ordenar a tela de gestão. A vitrine
+  // precisa dele para ordenar os cards dentro de cada grupo na mesma ordem
+  // manual que o líder/admin configurou.
+  position: number
   access: AccessLevel
   requestStatus: 'none' | 'pending'
 }
@@ -72,8 +83,10 @@ export function paraCatalogItem(
     coverUrl: row.cover_url,
     areaName: row.areas?.name ?? null,
     areaColor: row.areas?.color ?? null,
+    areaPosition: row.areas?.position ?? null,
     isOnboarding: row.is_onboarding,
     lessonCount: aulasPorCurso.get(row.id) ?? 0,
+    position: row.position,
     access: canAccessCourse(
       user,
       {
@@ -88,23 +101,58 @@ export function paraCatalogItem(
   }
 }
 
-/** Separa a trilha inicial (se houver) e agrupa o resto por área. */
+// Ordena por posição administrada primeiro (a coluna `position` — do curso
+// aqui, da área em montarCatalogo — que "Posição — Ordem na vitrine" em
+// /admin/areas e a reordenação de listManagedCourses já respeitam) e usa o
+// nome/título como desempate, nunca o inverso. Duas posições iguais (0 é o
+// padrão para quem nunca foi reordenado) caem no desempate alfabético em vez
+// de na ordem de chegada do banco, que não é significativa.
+function porPosicaoDepoisTitulo(a: { position: number; title: string }, b: { position: number; title: string }) {
+  return a.position - b.position || a.title.localeCompare(b.title, 'pt-BR')
+}
+
+/**
+ * Separa a trilha inicial (se houver) e agrupa o resto por área.
+ *
+ * Cada grupo carrega a posição da SUA área (não a de um item qualquer do
+ * grupo, para não depender de qual item foi inserido primeiro no Map) — é o
+ * que permite ordenar os grupos pela mesma coluna `areas.position` que
+ * /admin/areas expõe como "Posição — Ordem na vitrine". Um curso sem área
+ * (fora da trilha inicial — caso raro, mas o schema permite area_id nulo)
+ * cai no grupo "Outros", que não tem posição de admin nenhuma para honrar (o
+ * formulário de área não cobre esse grupo) e por isso vai sempre por último,
+ * depois de todo grupo com posição definida.
+ */
 export function montarCatalogo(items: CatalogItem[]): Catalog {
   const onboarding = items.find((i) => i.isOnboarding) ?? null
 
-  const porArea = new Map<string, CatalogItem[]>()
+  type Grupo = { areaName: string; areaPosition: number | null; items: CatalogItem[] }
+  const porArea = new Map<string, Grupo>()
+
   for (const item of items) {
     if (item.isOnboarding) continue
     const chave = item.areaName ?? 'Outros'
-    porArea.set(chave, [...(porArea.get(chave) ?? []), item])
+
+    let grupo = porArea.get(chave)
+    if (!grupo) {
+      grupo = { areaName: chave, areaPosition: item.areaPosition, items: [] }
+      porArea.set(chave, grupo)
+    }
+    grupo.items.push(item)
   }
 
-  const grupos = [...porArea.entries()]
-    .map(([areaName, lista]) => ({
-      areaName,
-      items: lista.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR')),
+  const SEM_POSICAO = Number.POSITIVE_INFINITY
+
+  const grupos = [...porArea.values()]
+    .sort(
+      (a, b) =>
+        (a.areaPosition ?? SEM_POSICAO) - (b.areaPosition ?? SEM_POSICAO) ||
+        a.areaName.localeCompare(b.areaName, 'pt-BR'),
+    )
+    .map((grupo) => ({
+      areaName: grupo.areaName,
+      items: [...grupo.items].sort(porPosicaoDepoisTitulo),
     }))
-    .sort((a, b) => a.areaName.localeCompare(b.areaName, 'pt-BR'))
 
   return { onboarding, grupos }
 }
