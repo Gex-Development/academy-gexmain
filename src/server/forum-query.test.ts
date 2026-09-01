@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { paraForumQuestion, podeGerenciarArea, type LinhaPergunta, type PerfilAutor } from './forum-query'
+import {
+  paraForumQuestion,
+  paraPendingQuestion,
+  pertenceAFilaDoLider,
+  podeGerenciarArea,
+  type LinhaFilaDuvidas,
+  type LinhaPergunta,
+  type PerfilAutor,
+} from './forum-query'
 
 const AREA_TRAFEGO = 'area-trafego'
 const AREA_DESIGN = 'area-design'
@@ -198,5 +206,72 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       p,
     )
     expect(comoTerceiro.answers[0]!.canEdit).toBe(false)
+  })
+})
+
+describe('pertenceAFilaDoLider — defesa em profundidade da fila de dúvidas do líder', () => {
+  it('líder de uma área não vê a fila de outra área', () => {
+    expect(pertenceAFilaDoLider({ role: 'leader', areaId: AREA_TRAFEGO }, AREA_DESIGN)).toBe(false)
+  })
+
+  it('líder vê a fila da própria área', () => {
+    expect(pertenceAFilaDoLider({ role: 'leader', areaId: AREA_TRAFEGO }, AREA_TRAFEGO)).toBe(true)
+  })
+
+  it('admin vê a fila de todas as áreas, mesmo sem área própria', () => {
+    expect(pertenceAFilaDoLider({ role: 'admin', areaId: null }, AREA_TRAFEGO)).toBe(true)
+    expect(pertenceAFilaDoLider({ role: 'admin', areaId: AREA_DESIGN }, AREA_TRAFEGO)).toBe(true)
+  })
+
+  it('líder sem área própria (areaId null) não vê fila de curso com área', () => {
+    expect(pertenceAFilaDoLider({ role: 'leader', areaId: null }, AREA_TRAFEGO)).toBe(false)
+  })
+})
+
+function linhaFila(over: Partial<LinhaFilaDuvidas> = {}): LinhaFilaDuvidas {
+  return {
+    id: 'q1',
+    body: 'Como funciona X?',
+    created_at: '2026-08-31T10:00:00Z',
+    author_id: 'colega-1',
+    answers: [],
+    lessons: {
+      title: 'Aula 1',
+      slug: 'aula-1',
+      courses: { title: 'Curso Tráfego', slug: 'curso-trafego', area_id: AREA_TRAFEGO },
+    },
+    ...over,
+  }
+}
+
+describe('paraPendingQuestion — mapeamento de linha crua para a fila do líder', () => {
+  it('nome do autor vem do Map de perfis', () => {
+    const pendente = paraPendingQuestion(linhaFila({ author_id: 'colega-1' }), perfis({ 'colega-1': COLEGA_1 }))
+    expect(pendente.authorName).toBe('Colega Um')
+  })
+
+  it('autor ausente do Map cai no nome de reserva "Colaborador" — é o caso do aluno de outra área, liberado ao curso mas sem política de leitura sobre profiles', () => {
+    const pendente = paraPendingQuestion(linhaFila({ author_id: 'colega-de-fora' }), perfis({}))
+    expect(pendente.authorName).toBe('Colaborador')
+  })
+
+  it('demais campos vêm da aula/curso aninhados e da contagem de respostas', () => {
+    const pendente = paraPendingQuestion(
+      linhaFila({
+        id: 'q9',
+        body: 'Dúvida sobre o módulo 2',
+        answers: [{ id: 'a1' }],
+      }),
+      perfis({ 'colega-1': COLEGA_1 }),
+    )
+    expect(pendente).toMatchObject({
+      id: 'q9',
+      body: 'Dúvida sobre o módulo 2',
+      answerCount: 1,
+      lessonTitle: 'Aula 1',
+      lessonSlug: 'aula-1',
+      courseTitle: 'Curso Tráfego',
+      courseSlug: 'curso-trafego',
+    })
   })
 })

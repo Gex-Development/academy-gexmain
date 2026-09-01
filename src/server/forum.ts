@@ -9,11 +9,16 @@ import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import {
   paraForumQuestion,
+  paraPendingQuestion,
+  pertenceAFilaDoLider,
   podeGerenciarArea,
+  SELECT_FILA_DUVIDAS,
   SELECT_PERGUNTAS,
   type ForumAnswer,
   type ForumQuestion,
+  type LinhaFilaDuvidas,
   type LinhaPergunta,
+  type PendingQuestion,
   type PerfilAutor,
   type PerfisPorId,
 } from './forum-query'
@@ -26,7 +31,7 @@ import { getLessonView } from './viewer'
 // (apagado em tempo de compilação, não conta como export de runtime) é
 // reexportado, para quem importa `type ForumQuestion`/`ForumAnswer` daqui
 // continuar funcionando — é o caso dos componentes em src/components/forum.
-export type { ForumAnswer, ForumQuestion }
+export type { ForumAnswer, ForumQuestion, PendingQuestion }
 
 /**
  * Contexto comum a toda action do fórum: confirma sessão ativa e acesso à
@@ -161,6 +166,34 @@ export async function listQuestions(lessonId: string): Promise<ForumQuestion[]> 
   return linhas.map((row) => paraForumQuestion(row, ctx.user.id, ctx.podeModerar, ctx.areaId, perfis))
 }
 
+/**
+ * Perguntas ainda não resolvidas nos cursos que a pessoa gerencia.
+ * Sem esta tela o líder não descobre que alguém perguntou, e o fórum morre.
+ */
+export async function listPendingQuestions(): Promise<PendingQuestion[]> {
+  const user = await getCurrentUser()
+  if (!user || user.status !== 'active' || user.role === 'member') return []
+
+  // Cliente da SESSÃO: perguntas_leitura sustenta o conteúdo, como em
+  // listQuestions. SELECT_FILA_DUVIDAS não inclui `profiles(...)` pelo mesmo
+  // motivo documentado lá — os nomes vêm à parte, por buscarPerfisAutores.
+  const supabase = await createServerSupabase()
+  const { data } = await supabase
+    .from('questions')
+    .select(SELECT_FILA_DUVIDAS)
+    .is('resolved_at', null)
+    .order('created_at', { ascending: true })
+
+  const linhas = ((data ?? []) as unknown as LinhaFilaDuvidas[]).filter((q) =>
+    pertenceAFilaDoLider(user, q.lessons.courses.area_id),
+  )
+  if (linhas.length === 0) return []
+
+  const perfis = await buscarPerfisAutores(new Set(linhas.map((q) => q.author_id)))
+
+  return linhas.map((row) => paraPendingQuestion(row, perfis))
+}
+
 export async function askQuestion(
   _prev: unknown,
   formData: FormData,
@@ -230,6 +263,7 @@ export async function askQuestion(
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
+    revalidatePath('/gerenciar/duvidas')
     return ok({ id: data.id })
   } catch (error) {
     return toActionError(error)
@@ -283,6 +317,7 @@ export async function answerQuestion(
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
+    revalidatePath('/gerenciar/duvidas')
     return ok({ id: data.id })
   } catch (error) {
     return toActionError(error)
@@ -312,6 +347,10 @@ async function moderar(
     supabase: Awaited<ReturnType<typeof createServerSupabase>>,
   ) => Promise<boolean>,
   exigeModeracao: boolean,
+  // Só as operações que mexem em resolved_at mudam o que a fila do líder
+  // mostra (/gerenciar/duvidas só lista perguntas com resolved_at nulo) —
+  // fixar/desafixar não altera isso, e a revalidação extra ali seria inerte.
+  afetaFila: boolean,
 ): Promise<ActionResult<null>> {
   const id = z.string().uuid().safeParse(formData.get('questionId'))
   if (!id.success) return { ok: false, error: 'Pergunta inválida.' }
@@ -337,6 +376,7 @@ async function moderar(
   if (!sucesso) return { ok: false, error: 'Você não tem permissão para esta ação.' }
 
   revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
+  if (afetaFila) revalidatePath('/gerenciar/duvidas')
   return ok(null)
 }
 
@@ -362,6 +402,7 @@ export async function togglePinned(_prev: unknown, formData: FormData): Promise<
         return (data?.length ?? 0) > 0
       },
       true,
+      false,
     )
   } catch (error) {
     return toActionError(error)
@@ -390,6 +431,7 @@ export async function toggleResolved(_prev: unknown, formData: FormData): Promis
         return (data?.length ?? 0) > 0
       },
       true,
+      true,
     )
   } catch (error) {
     return toActionError(error)
@@ -405,6 +447,7 @@ export async function deleteQuestion(_prev: unknown, formData: FormData): Promis
         if (error) throw error
         return (data?.length ?? 0) > 0
       },
+      false,
       false,
     )
   } catch (error) {

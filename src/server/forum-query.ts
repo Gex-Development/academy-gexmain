@@ -149,3 +149,76 @@ export function paraForumQuestion(
       })),
   }
 }
+
+// --- Fila de dúvidas do líder (src/server/forum.ts#listPendingQuestions) ---
+//
+// Mesmo motivo de tudo acima: listPendingQuestions mora num módulo
+// 'use server', que só pode exportar async — o tipo da linha crua, o filtro
+// por área e o mapeamento para a tela ficam aqui para serem testáveis sem
+// cookies().
+
+export type PendingQuestion = {
+  id: string
+  body: string
+  createdAt: string
+  authorName: string
+  lessonTitle: string
+  courseTitle: string
+  courseSlug: string
+  lessonSlug: string
+  answerCount: number
+}
+
+// Sem embed de `profiles(full_name)` de propósito — mesmo achado documentado
+// acima em SELECT_PERGUNTAS: quem pergunta pode ser de outra área (é para
+// isso que existe a liberação individual de curso), e `profiles_leitura_lider`
+// só libera os perfis da PRÓPRIA área do líder. O embed voltaria `null`
+// justamente para o aluno de fora da área, escondendo quem perguntou sem
+// erro nenhum. O nome vem à parte, por buscarPerfisAutores, igual a
+// listQuestions.
+export const SELECT_FILA_DUVIDAS =
+  'id, body, created_at, author_id, answers(id), lessons!inner(title, slug, courses!inner(title, slug, area_id))'
+
+export type LinhaFilaDuvidas = {
+  id: string
+  body: string
+  created_at: string
+  author_id: string
+  answers: { id: string }[]
+  lessons: {
+    title: string
+    slug: string
+    courses: { title: string; slug: string; area_id: string | null }
+  }
+}
+
+/**
+ * Defesa em profundidade: `perguntas_leitura` (0005_endurece_politicas.sql)
+ * já limita o que chega do banco por `can_manage_course` — mais permissiva
+ * que isto, porque também libera quem só TEM ACESSO ao curso (liberação
+ * individual), não só quem gerencia. A fila do líder é mais estreita: só a
+ * área que ele de fato gerencia, nunca um curso de outra área que ele
+ * enxerga por liberação avulsa. Um filtro extra e barato aqui garante isso
+ * mesmo se o RLS um dia mudar.
+ */
+export function pertenceAFilaDoLider(
+  pessoa: { role: string; areaId: string | null },
+  areaIdDoCurso: string | null,
+): boolean {
+  return pessoa.role === 'admin' || areaIdDoCurso === pessoa.areaId
+}
+
+/** Uma linha de `questions` (com aula/curso aninhados) vira um PendingQuestion pronto para a tela. */
+export function paraPendingQuestion(row: LinhaFilaDuvidas, perfis: PerfisPorId): PendingQuestion {
+  return {
+    id: row.id,
+    body: row.body,
+    createdAt: row.created_at,
+    authorName: perfis.get(row.author_id)?.full_name ?? 'Colaborador',
+    lessonTitle: row.lessons.title,
+    courseTitle: row.lessons.courses.title,
+    courseSlug: row.lessons.courses.slug,
+    lessonSlug: row.lessons.slug,
+    answerCount: row.answers.length,
+  }
+}
