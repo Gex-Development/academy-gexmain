@@ -97,3 +97,26 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
   }
   return { tipo: 'nenhum' }
 }
+
+/**
+ * A fileira "Continue de onde parou" de uma página de área.
+ *
+ * Um curso entra quando a pessoa ainda tem acesso a ele, já começou
+ * (`completed > 0`) e ainda não terminou. "Ainda não terminou" é
+ * `completed < total`, não `percent < 100`: `percent` vem de
+ * `Math.round` (src/lib/progress/percent.ts) e arredonda para cima perto do
+ * fim — 199 de 200 aulas dá 99,5%, que vira 100 e faria o curso sumir da
+ * fileira mesmo inacabado. `completed`/`total` não perde essa borda.
+ *
+ * `access !== 'none'` cobre a pessoa que começou o curso e depois perdeu o
+ * acesso (liberação avulsa revogada, por exemplo) — ela não vê mais um
+ * "continue" para algo que não pode abrir.
+ *
+ * Só filtra: a ordem de entrada, já decidida pelo catálogo, é preservada.
+ */
+export function selecionarEmAndamento(items: CatalogItem[]): CatalogItem[] {
+  return items.filter(
+    (item) =>
+      item.access !== 'none' && item.progress.completed > 0 && item.progress.completed < item.progress.total,
+  )
+}

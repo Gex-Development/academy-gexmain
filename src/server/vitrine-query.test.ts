@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog, CatalogItem } from './catalog-query'
-import { escolherDestaque, montarVitrine } from './vitrine-query'
+import { escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
 
 function item(over: Partial<CatalogItem> = {}): CatalogItem {
   return {
@@ -158,5 +158,43 @@ describe('escolherDestaque', () => {
 
   it('sem trilha e sem retomada → nenhum', () => {
     expect(escolherDestaque(null, false)).toEqual({ tipo: 'nenhum' })
+  })
+})
+
+describe('selecionarEmAndamento', () => {
+  it('curso nunca começado fica fora', () => {
+    const nunca = item({ progress: { completed: 0, total: 4, percent: 0 } })
+    expect(selecionarEmAndamento([nunca])).toEqual([])
+  })
+
+  it('curso concluído fica fora', () => {
+    const concluido = item({ progress: { completed: 4, total: 4, percent: 100 } })
+    expect(selecionarEmAndamento([concluido])).toEqual([])
+  })
+
+  it('curso com progresso mas access none fica fora — a pessoa perdeu o acesso depois de começar', () => {
+    const semAcesso = item({ access: 'none', progress: { completed: 2, total: 4, percent: 50 } })
+    expect(selecionarEmAndamento([semAcesso])).toEqual([])
+  })
+
+  it('curso começado e inacabado entra', () => {
+    const emAndamento = item({ progress: { completed: 2, total: 4, percent: 50 } })
+    expect(selecionarEmAndamento([emAndamento])).toEqual([emAndamento])
+  })
+
+  it('199 de 200 aulas entra — percent arredonda para 100, completed/total não', () => {
+    // Math.round((199 / 200) * 100) === 100: se o filtro usasse percent < 100
+    // esse curso, inacabado, sumiria da fileira. Ver progressPercent em
+    // src/lib/progress/percent.ts.
+    const quaseNoFim = item({ progress: { completed: 199, total: 200, percent: 100 } })
+    expect(selecionarEmAndamento([quaseNoFim])).toEqual([quaseNoFim])
+  })
+
+  it('preserva a ordem de entrada — é filtro, não reordenação', () => {
+    const a = item({ id: 'a', progress: { completed: 1, total: 4, percent: 25 } })
+    const b = item({ id: 'b', progress: { completed: 2, total: 4, percent: 50 } })
+    const c = item({ id: 'c', progress: { completed: 3, total: 4, percent: 75 } })
+
+    expect(selecionarEmAndamento([c, a, b]).map((i) => i.id)).toEqual(['c', 'a', 'b'])
   })
 })

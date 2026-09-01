@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { CourseCard } from '@/components/catalog/course-card'
 import { getCatalog } from '@/server/catalog'
+import { selecionarEmAndamento } from '@/server/vitrine-query'
 
 /*
  * A página reusa getCatalog() em vez de uma consulta por área.
@@ -22,9 +23,7 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
   const grupo = catalog.grupos.find((g) => g.areaSlug === slug)
   if (!grupo) notFound()
 
-  const emAndamento = grupo.items.filter(
-    (item) => item.access !== 'none' && item.progress.completed > 0 && item.progress.percent < 100,
-  )
+  const emAndamento = selecionarEmAndamento(grupo.items)
 
   return (
     <div className="flex flex-col gap-8">
