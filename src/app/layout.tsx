@@ -16,6 +16,20 @@ export const metadata: Metadata = {
  */
 const SCRIPT_TEMA = `(function(){try{var t=localStorage.getItem('${CHAVE_TEMA}');if(t!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}})()`
 
+/*
+ * Caveat dos docs do Next (node_modules/next/dist/docs/01-app/02-guides/
+ * preventing-flash-before-hydration.md, seção "Re-applying attributes in
+ * development"): em dev, o remonte único do Strict Mode reseta <html>,
+ * <head> e <body> para só os atributos que o React gerencia via JSX,
+ * apagando o que um script combinado tivesse setado. Investigado nesta
+ * versão (reactStrictMode é true por padrão aqui, e não há
+ * reactStrictMode: false em next.config.ts): não reproduz, porque este
+ * <html> não declara `className` no JSX — só `lang` e
+ * `suppressHydrationWarning` — então não há atributo "gerenciado" para o
+ * remonte resetar. Conferido no navegador: document.documentElement.className
+ * continua "dark" depois de recarregar em dev, em mais de uma tentativa.
+ */
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     // suppressHydrationWarning: o SCRIPT_TEMA acima muda a classe do <html>

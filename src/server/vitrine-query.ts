@@ -42,6 +42,13 @@ export function montarVitrine(catalog: Catalog): AreaVitrine[] {
       coverUrl: onb.coverUrl,
       color: null,
       courseCount: onb.lessonCount,
+      // Defensivo, não estado possível hoje: a regra 5 de canAccessCourse
+      // (src/lib/access/can-access-course.ts) devolve 'view' para toda
+      // trilha PUBLICADA vista por gente ATIVA, e getCatalog() só traz
+      // curso publicado para usuário ativo — as duas condições que
+      // catalog.onboarding, quando não-nulo, já garante. onb.access nunca
+      // é 'none' na prática; o `=== 'none'` fica pela mesma razão que o
+      // resto do arquivo trata acesso por regra, não por suposição.
       bloqueada: onb.access === 'none',
       isOnboarding: true,
     })
@@ -50,7 +57,10 @@ export function montarVitrine(catalog: Catalog): AreaVitrine[] {
   for (const grupo of catalog.grupos) {
     // O grupo "Outros" (cursos com area_id nulo que não são a trilha) não tem
     // slug e portanto não tem página de área para onde levar. Fica de fora da
-    // vitrine em vez de virar uma capa que não clica.
+    // vitrine em vez de virar uma capa que não clica — e, na prática, fica de
+    // fora de TODA tela de navegação, não só desta: sem areaSlug também não
+    // existe /area/[slug] para ele. Um curso assim só é alcançável por link
+    // direto a /curso/[slug], por quem já souber o slug de cor.
     if (!grupo.areaSlug) continue
 
     areas.push({
@@ -89,6 +99,9 @@ export type DestaqueHome =
  * só se ele existe.
  */
 export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: boolean): DestaqueHome {
+  // `!== 'none'` também é defensivo aqui, mesmo raciocínio do comentário em
+  // montarVitrine (acima, no bloco do onboarding): access nunca é 'none' para
+  // uma trilha que chegou até este ponto como CatalogItem não-nulo.
   if (onboarding !== null && onboarding.access !== 'none' && onboarding.progress.percent < 100) {
     return { tipo: 'trilha', item: onboarding }
   }

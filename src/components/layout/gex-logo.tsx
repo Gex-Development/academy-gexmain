@@ -1,3 +1,9 @@
+/**
+ * Os `<path>` abaixo são os MESMOS traçados de public/logo-gex.svg, colados
+ * aqui à mão (sem `fill` fixo, para currentColor tingir por CSS — ver §7.4
+ * da spec). Se a logo mudar, atualize os dois arquivos juntos: nada aqui
+ * gera um a partir do outro, então divergem em silêncio se só um for editado.
+ */
 export function GexLogo({ className }: { className?: string }) {
   return (
     <svg
