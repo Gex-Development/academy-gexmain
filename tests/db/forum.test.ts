@@ -56,6 +56,7 @@ let emailMemberDesign: string
 
 let cursoTrafego: string
 let aulaTrafego: string
+let aulaTrafegoRascunho: string
 
 beforeAll(async () => {
   const stamp = Date.now()
@@ -143,6 +144,25 @@ beforeAll(async () => {
   if (aulaError) throw aulaError
   aulaTrafego = aula!.id
 
+  // Aula do MESMO curso ainda em rascunho (0009_endurece_escrita_do_forum) —
+  // o curso é publicado (o colega tem can_access_course true), mas esta aula
+  // específica não. Existe só para a seção "perguntas_cria/respostas_cria —
+  // aula em rascunho" mais abaixo.
+  const { data: aulaRascunho, error: aulaRascunhoError } = await db
+    .from('lessons')
+    .insert({
+      course_id: cursoTrafego,
+      title: 'Aula Fórum (rascunho)',
+      slug: 'aula-forum-rascunho',
+      video_provider: 'youtube',
+      video_ref: 'dQw4w9WgXcQ',
+      status: 'draft',
+    })
+    .select('id')
+    .single()
+  if (aulaRascunhoError) throw aulaRascunhoError
+  aulaTrafegoRascunho = aulaRascunho!.id
+
   // Líder de Design ganha acesso AVULSO ao curso de Tráfego — 'view' via
   // canAccessCourse (regra 7), nunca 'manage' (regra 3 exige a MESMA área).
   // É o caso central desta suíte: acesso real, sem virar professor nem
@@ -177,6 +197,63 @@ describe('askQuestion/answerQuestion — o INSERT que a action faz, respeitando 
       .from('questions')
       .insert({ lesson_id: aulaTrafego, author_id: memberTrafegoId, body: 'Como uso o filtro X?' })
     expect(aceito).toBeNull()
+  })
+})
+
+// 0009_endurece_escrita_do_forum.sql: perguntas_cria/respostas_cria exigiam
+// só can_access_course(l.course_id) — acesso ao CURSO, não à AULA — então um
+// colega com acesso ao curso publicava pergunta/resposta numa aula que o
+// líder ainda nem publicou. A aula usada aqui (aulaTrafegoRascunho) vive no
+// MESMO curso publicado que os testes acima já usam: can_access_course dá
+// true para o colega de Tráfego (é por isso que ele consegue perguntar em
+// aulaTrafego, provado logo acima) — a única diferença é l.status da aula
+// em si, que é o que esta migration passou a checar.
+describe('perguntas_cria/respostas_cria — aula em rascunho: só quem gerencia o curso publica (0009)', () => {
+  it('colega com acesso ao curso não pergunta numa aula em rascunho (42501); o gestor do curso pergunta (é como ele testa a própria aula)', async () => {
+    const comoMemberTrafego = await authClient(emailMemberTrafego)
+    const { error: negado } = await comoMemberTrafego
+      .from('questions')
+      .insert({ lesson_id: aulaTrafegoRascunho, author_id: memberTrafegoId, body: 'Isto deveria ser recusado.' })
+    expect(negado?.code).toBe('42501')
+    const { data: naoExiste } = await db.from('questions').select('id').eq('lesson_id', aulaTrafegoRascunho)
+    expect(naoExiste).toEqual([])
+
+    const comoLeaderTrafego = await authClient(emailLeaderTrafego)
+    const { error: aceito, data: pergunta } = await comoLeaderTrafego
+      .from('questions')
+      .insert({ lesson_id: aulaTrafegoRascunho, author_id: leaderTrafegoId, body: 'Pergunta de teste da própria aula.' })
+      .select('id')
+      .single()
+    expect(aceito).toBeNull()
+    expect(pergunta!.id).toBeTruthy()
+  })
+
+  it('colega com acesso ao curso não responde numa pergunta feita numa aula em rascunho (42501); o gestor do curso responde', async () => {
+    // A pergunta em si é seedada pela chave de serviço (bypassa RLS) — não é
+    // o alvo deste teste, que é respostas_cria, não perguntas_cria de novo.
+    const { data: perguntaNaRascunho, error: perguntaError } = await db
+      .from('questions')
+      .insert({ lesson_id: aulaTrafegoRascunho, author_id: leaderTrafegoId, body: 'Pergunta seedada para testar resposta.' })
+      .select('id')
+      .single()
+    if (perguntaError) throw perguntaError
+
+    const comoMemberTrafego = await authClient(emailMemberTrafego)
+    const { error: negado } = await comoMemberTrafego
+      .from('answers')
+      .insert({ question_id: perguntaNaRascunho!.id, author_id: memberTrafegoId, body: 'Isto deveria ser recusado.' })
+    expect(negado?.code).toBe('42501')
+    const { data: naoExiste } = await db.from('answers').select('id').eq('question_id', perguntaNaRascunho!.id)
+    expect(naoExiste).toEqual([])
+
+    const comoLeaderTrafego = await authClient(emailLeaderTrafego)
+    const { error: aceito, data: resposta } = await comoLeaderTrafego
+      .from('answers')
+      .insert({ question_id: perguntaNaRascunho!.id, author_id: leaderTrafegoId, body: 'Resposta de teste da própria aula.' })
+      .select('id')
+      .single()
+    expect(aceito).toBeNull()
+    expect(resposta!.id).toBeTruthy()
   })
 })
 
