@@ -15,11 +15,15 @@ export default async function HomePage() {
   ])
 
   const areas = montarVitrine(catalog)
-  // A decisão de "trilha pendente vs. não" mora em escolherDestaque
-  // (vitrine-query.ts), testada lá caso a caso — inclusive as bordas sem
-  // trilha no sistema e sem acesso a ela. Aqui só se combina o resultado com
-  // `continuar`: sem os dois, não se inventa destaque — banner falso é pior
-  // que ausência de banner, e fica o cabeçalho de saudação simples.
+  // escolherDestaque (vitrine-query.ts) é a autoridade nos três ramos —
+  // testada caso a caso, inclusive as bordas sem trilha no sistema e sem
+  // acesso a ela. O JSX abaixo pergunta a ELA (destaque.tipo), nunca decide
+  // de novo a partir de `continuar`: o `&& continuar` no ramo 'retomada' é
+  // só o estreitamento de tipo que o TypeScript exige, não uma segunda
+  // opinião — se uma regra nova entrar em escolherDestaque amanhã, é aqui
+  // que o efeito aparece. Sem trilha nem retomada, não se inventa destaque:
+  // banner falso é pior que ausência de banner, e fica o cabeçalho de
+  // saudação simples.
   const destaque = escolherDestaque(catalog.onboarding, continuar !== null)
 
   return (
@@ -36,7 +40,7 @@ export default async function HomePage() {
           href={`/curso/${destaque.item.slug}`}
           textoBotao={destaque.item.progress.completed > 0 ? 'Continuar' : 'Começar'}
         />
-      ) : continuar ? (
+      ) : destaque.tipo === 'retomada' && continuar ? (
         <HeroBanner
           rotulo="Continue de onde parou"
           titulo={continuar.lessonTitle}
