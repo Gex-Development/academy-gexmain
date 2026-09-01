@@ -3,7 +3,20 @@ import type { CourseView } from '@/server/viewer'
 export function LockedCourse({ course }: { course: CourseView }) {
   return (
     <div className="mx-auto max-w-lg rounded-card border border-borda bg-superficie p-8 text-center">
-      <span aria-hidden className="text-3xl">
+      <div
+        className="aspect-video w-full overflow-hidden rounded-card border border-borda bg-fundo"
+        style={course.coverUrl ? undefined : { backgroundColor: course.areaColor ?? '#e3e6ea' }}
+      >
+        {course.coverUrl && (
+          // Capa é URL externa informada pelo líder; next/image exigiria allowlist de domínio.
+          // Mesmo mecanismo de course-card.tsx: a capa de um curso bloqueado já é
+          // exibida na vitrine, então não é uma fronteira de confiança nova aqui.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={course.coverUrl} alt="" className="h-full w-full object-cover" />
+        )}
+      </div>
+
+      <span aria-hidden className="mt-4 block text-3xl">
         🔒
       </span>
       <h1 className="mt-3 text-lg font-semibold">{course.title}</h1>

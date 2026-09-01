@@ -24,6 +24,7 @@ export type CourseView = {
   description: string | null
   coverUrl: string | null
   areaName: string | null
+  areaColor: string | null
   isOnboarding: boolean
   access: AccessLevel
   lessons: { id: string; slug: string; title: string; durationSeconds: number | null }[]
@@ -47,7 +48,7 @@ export type LessonView = {
 }
 
 export const SELECT_CURSO_VIEW =
-  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name), lessons(id, slug, title, duration_seconds, status, position)'
+  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name, color), lessons(id, slug, title, duration_seconds, status, position)'
 
 export type LinhaCursoView = {
   id: string
@@ -58,7 +59,7 @@ export type LinhaCursoView = {
   status: string
   is_onboarding: boolean
   area_id: string | null
-  areas: { name: string } | null
+  areas: { name: string; color: string | null } | null
   lessons: {
     id: string
     slug: string
@@ -118,6 +119,7 @@ export function paraCourseView(
     description: row.description,
     coverUrl: row.cover_url,
     areaName: row.areas?.name ?? null,
+    areaColor: row.areas?.color ?? null,
     isOnboarding: row.is_onboarding,
     access,
     lessons,

@@ -12,7 +12,7 @@ function linha(over: Partial<LinhaCursoView> = {}): LinhaCursoView {
     status: 'published',
     is_onboarding: false,
     area_id: 'area-trafego',
-    areas: { name: 'Tráfego' },
+    areas: { name: 'Tráfego', color: '#2f6bff' },
     lessons: [
       { id: 'l1', slug: 'aula-1', title: 'Aula 1', duration_seconds: 300, status: 'published', position: 0 },
       { id: 'l2', slug: 'aula-2', title: 'Aula 2', duration_seconds: 600, status: 'published', position: 1 },
@@ -52,6 +52,7 @@ describe('paraCourseView — a propriedade que a tarefa existe para garantir', (
       description: 'Descrição do curso.',
       coverUrl: 'https://exemplo.com/capa.jpg',
       areaName: 'Tráfego',
+      areaColor: '#2f6bff',
       isOnboarding: false,
       access: 'none',
       lessons: [],
@@ -101,16 +102,22 @@ describe('paraCourseView — a propriedade que a tarefa existe para garantir', (
     expect(view!.lessons.map((l) => l.slug)).toEqual(['aula-1', 'aula-2'])
   })
 
-  it('trilha inicial (sem área): area_id e areas nulos viram areaName null', () => {
+  it('trilha inicial (sem área): area_id e areas nulos viram areaName e areaColor null', () => {
     const view = paraCourseView(linha({ is_onboarding: true, area_id: null, areas: null, lessons: [] }), bloqueado, new Set())
     expect(view!.access).toBe('view')
     expect(view!.areaName).toBeNull()
+    expect(view!.areaColor).toBeNull()
+  })
+
+  it('carrega a cor da área — LockedCourse usa como fundo de reserva quando não há capa', () => {
+    const view = paraCourseView(linha(), bloqueado, new Set())
+    expect(view!.areaColor).toBe('#2f6bff')
   })
 
   it('CourseView nunca carrega campo de vídeo ou anexo — só as chaves do tipo', () => {
     const view = paraCourseView(linha(), lider, new Set())
     expect(Object.keys(view!).sort()).toEqual(
-      ['access', 'areaName', 'coverUrl', 'description', 'id', 'isOnboarding', 'lessons', 'slug', 'title'].sort(),
+      ['access', 'areaColor', 'areaName', 'coverUrl', 'description', 'id', 'isOnboarding', 'lessons', 'slug', 'title'].sort(),
     )
     expect(Object.keys(view!.lessons[0]!).sort()).toEqual(['durationSeconds', 'id', 'slug', 'title'].sort())
   })
