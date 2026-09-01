@@ -1,5 +1,6 @@
 import { listAreas } from '@/server/areas'
 import { AreaForm } from './area-form'
+import { AreaRow } from './area-row'
 
 export const metadata = { title: 'Áreas — GEX Academy' }
 
@@ -17,18 +18,7 @@ export default async function AreasPage() {
         ) : (
           <ul className="divide-y divide-borda rounded-card border border-borda bg-superficie">
             {areas.map((area) => (
-              <li key={area.id} className="flex items-center gap-3 px-4 py-3">
-                <span
-                  aria-hidden
-                  className="size-3 rounded-full border border-borda"
-                  style={{ backgroundColor: area.color ?? 'transparent' }}
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{area.name}</p>
-                  <p className="text-xs text-texto-suave">/{area.slug}</p>
-                </div>
-                <span className="text-xs text-texto-suave">posição {area.position}</span>
-              </li>
+              <AreaRow key={area.id} area={area} />
             ))}
           </ul>
         )}

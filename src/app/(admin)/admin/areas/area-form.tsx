@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
+import { CoverField } from '@/components/ui/cover-field'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { createArea } from '@/server/areas'
@@ -20,6 +21,7 @@ export function AreaForm() {
       <Field label="Cor" htmlFor="color" hint="Formato #RRGGBB">
         <Input id="color" name="color" placeholder="#2F6BFF" />
       </Field>
+      <CoverField name="coverUrl" largura={1600} altura={1000} />
       <Field label="Posição" htmlFor="position" hint="Ordem na vitrine">
         <Input id="position" name="position" type="number" min={0} max={999} defaultValue={0} />
       </Field>

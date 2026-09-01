@@ -124,6 +124,7 @@ export type Database = {
           color: string | null
           position: number
           created_at: string
+          cover_url: string | null
         }
         Insert: {
           id?: string
@@ -133,6 +134,7 @@ export type Database = {
           color?: string | null
           position?: number
           created_at?: string
+          cover_url?: string | null
         }
         Update: {
           id?: string
@@ -142,6 +144,7 @@ export type Database = {
           color?: string | null
           position?: number
           created_at?: string
+          cover_url?: string | null
         }
         Relationships: []
       }

@@ -173,3 +173,30 @@ describe('RLS: corte imediato de pessoa inativa (auth_is_active)', () => {
     expect(leituraAtivo).toEqual([{ id: area!.id }])
   })
 })
+
+describe('capa da área', () => {
+  it('admin grava e lê a capa; a coluna aceita nulo', async () => {
+    const lixeira = criarLixeira()
+    const nome = `Área Capa ${Date.now()}`
+
+    const { data: criada, error } = await db
+      .from('areas')
+      .insert({ name: nome, slug: `area-capa-${Date.now()}`, cover_url: 'https://exemplo.test/capa.png' })
+      .select('id, cover_url')
+      .single()
+
+    expect(error).toBeNull()
+    expect(criada?.cover_url).toBe('https://exemplo.test/capa.png')
+    lixeira.area(criada!.id)
+
+    const { data: limpa } = await db
+      .from('areas')
+      .update({ cover_url: null })
+      .eq('id', criada!.id)
+      .select('cover_url')
+      .single()
+
+    expect(limpa?.cover_url).toBeNull()
+    await lixeira.limpar()
+  })
+})
