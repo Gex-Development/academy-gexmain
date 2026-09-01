@@ -7,19 +7,24 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { decisaoSolicitacaoEmail, novaSolicitacaoEmail, sendEmail } from '@/lib/email'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import {
+  paraPendingRequest,
+  SELECT_FILA_SOLICITACOES,
+  SELECT_SOLICITACAO_DECISAO,
+  type LinhaFilaSolicitacoes,
+  type LinhaSolicitacaoDecisao,
+  type PendingRequest,
+} from './access-requests-query'
 import { ok, toActionError, type ActionResult } from './result'
 import { getCourseView } from './viewer'
 
-export type PendingRequest = {
-  id: string
-  createdAt: string
-  message: string | null
-  personName: string
-  personEmail: string
-  areaName: string | null
-  courseId: string
-  courseTitle: string
-}
+// Um arquivo 'use server' só pode exportar funções async — por isso os
+// SELECTs, os tipos de linha crua e o mapeamento moram em
+// access-requests-query.ts (ver comentário lá). Aqui só o tipo (apagado em
+// tempo de compilação, não conta como export de runtime) é reexportado, para
+// quem importa `type PendingRequest` daqui continuar funcionando — é o caso
+// de src/app/(admin)/admin/solicitacoes/request-row.tsx.
+export type { PendingRequest }
 
 export async function requestAccess(
   _prev: unknown,
@@ -89,32 +94,20 @@ export async function listAccessRequests(): Promise<PendingRequest[]> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'admin' || user.status !== 'active') return []
 
+  // Cliente da SESSÃO: solicitacoes_leitura (admin lê todas) sustenta esta
+  // consulta. `error` não é descartado — um SELECT que falhasse (embed
+  // ambíguo, RLS regredida etc.) devolveria `data: null`, e mostrar "nenhuma
+  // solicitação pendente" nesse caso seria indistinguível de a fila estar
+  // vazia de verdade.
   const supabase = await createServerSupabase()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('access_requests')
-    .select('id, created_at, message, course_id, profiles(full_name, email, areas(name)), courses(title)')
+    .select(SELECT_FILA_SOLICITACOES)
     .eq('status', 'pending')
     .order('created_at')
+  if (error) throw error
 
-  type Linha = {
-    id: string
-    created_at: string
-    message: string | null
-    course_id: string
-    profiles: { full_name: string; email: string; areas: { name: string } | null } | null
-    courses: { title: string } | null
-  }
-
-  return ((data ?? []) as unknown as Linha[]).map((row) => ({
-    id: row.id,
-    createdAt: row.created_at,
-    message: row.message,
-    personName: row.profiles?.full_name ?? 'Colaborador',
-    personEmail: row.profiles?.email ?? '',
-    areaName: row.profiles?.areas?.name ?? null,
-    courseId: row.course_id,
-    courseTitle: row.courses?.title ?? 'Curso',
-  }))
+  return ((data ?? []) as unknown as LinhaFilaSolicitacoes[]).map(paraPendingRequest)
 }
 
 export async function decideAccessRequest(
@@ -129,12 +122,18 @@ export async function decideAccessRequest(
       .safeParse(Object.fromEntries(formData))
     if (!parsed.success) return { ok: false, error: 'Dados inválidos.' }
 
+    // Chave de serviço só para montar o CONTEXTO da decisão (mesmo padrão de
+    // moderar() em src/server/forum.ts): um membro comum não tem política
+    // que leia o perfil/e-mail de outra pessoa, e essa leitura não é, em si,
+    // a escrita que concede acesso.
     const admin = createAdminSupabase()
-    const { data: solicitacao } = await admin
+    const { data, error: leituraError } = await admin
       .from('access_requests')
-      .select('id, user_id, course_id, status, profiles(email), courses(title, slug)')
+      .select(SELECT_SOLICITACAO_DECISAO)
       .eq('id', parsed.data.id)
       .maybeSingle()
+    if (leituraError) throw leituraError
+    const solicitacao = data as unknown as LinhaSolicitacaoDecisao | null
 
     if (!solicitacao) return { ok: false, error: 'Solicitação não encontrada.' }
     // Checagem otimista: dá a mensagem certa no caso comum sem gastar uma
@@ -144,7 +143,16 @@ export async function decideAccessRequest(
     // e confere as linhas afetadas, em vez de confiar só na checagem anterior.
     if (solicitacao.status !== 'pending') return { ok: false, error: 'Esta solicitação já foi decidida.' }
 
-    const { data: decidida, error } = await admin
+    // A UPDATE e o INSERT em course_access — as duas escritas que de fato
+    // concedem acesso — rodam pelo cliente da SESSÃO, não pela chave de
+    // serviço: solicitacoes_decide e liberacoes_escrita (0003_politicas_rls.sql)
+    // já permitem as duas a um admin ativo, então o cliente da sessão faz o
+    // banco sustentar esta escrita de verdade, não só a checagem em JS acima
+    // (assertRole). Uma negativa de RLS numa UPDATE chega como zero linhas,
+    // não como erro — por isso a UPDATE abaixo confere `decidida?.length`,
+    // não só `error`.
+    const supabase = await createServerSupabase()
+    const { data: decidida, error } = await supabase
       .from('access_requests')
       .update({
         status: parsed.data.decisao,
@@ -163,7 +171,7 @@ export async function decideAccessRequest(
     }
 
     if (parsed.data.decisao === 'approved') {
-      const { error: acessoError } = await admin.from('course_access').insert({
+      const { error: acessoError } = await supabase.from('course_access').insert({
         user_id: solicitacao.user_id,
         course_id: solicitacao.course_id,
         granted_by: decisor.id,
@@ -172,8 +180,8 @@ export async function decideAccessRequest(
       if (acessoError && acessoError.code !== '23505') throw acessoError
     }
 
-    const solicitante = solicitacao.profiles as unknown as { email: string } | null
-    const curso = solicitacao.courses as unknown as { title: string; slug: string } | null
+    const solicitante = solicitacao.profiles
+    const curso = solicitacao.courses
 
     if (solicitante?.email && curso) {
       const conteudo = decisaoSolicitacaoEmail({

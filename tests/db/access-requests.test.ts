@@ -1,18 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { SELECT_FILA_SOLICITACOES, SELECT_SOLICITACAO_DECISAO } from '@/server/access-requests-query'
 import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 // Task 5 — o risco desta tarefa não está no mapeamento de linhas
 // (listAccessRequests/PendingRequest), que é trivial: está em QUEM pode
-// decidir uma solicitação. `decideAccessRequest` (src/server/access-requests.ts)
-// grava pela chave de serviço, então nada aqui exercita a Server Action em
-// si — o que este arquivo prova é que `solicitacoes_decide`
-// (0003_politicas_rls.sql), a política que sustenta a escrita, continua de
-// pé: se ela regredisse (nesta ou numa migration futura), um colega
-// aprovaria a própria solicitação e se daria acesso a qualquer curso, sem
-// passar pela Server Action nem por um admin. RLS é a defesa de última linha
-// para quem contorna a aplicação e fala direto com a API do Supabase — o
-// mesmo raciocínio de tests/db/rls.test.ts e da seção final de
-// tests/db/forum.test.ts.
+// decidir uma solicitação, e em o SELECT da produção resolver de verdade
+// contra a API. `decideAccessRequest` (src/server/access-requests.ts) lê o
+// contexto pela chave de serviço mas decide (UPDATE) e concede acesso
+// (INSERT em course_access) pelo cliente da SESSÃO — então o que este
+// arquivo prova é que `solicitacoes_decide` e `liberacoes_escrita`
+// (0003_politicas_rls.sql), as políticas que sustentam essas duas escritas,
+// continuam de pé: se `solicitacoes_decide` regredisse, um colega aprovaria
+// a própria solicitação e se daria acesso a qualquer curso, sem passar por
+// um admin de verdade. RLS é a defesa de última linha para quem contorna a
+// aplicação e fala direto com a API do Supabase — o mesmo raciocínio de
+// tests/db/rls.test.ts e da seção final de tests/db/forum.test.ts.
 //
 // Cobre também o índice único parcial `access_requests_uma_pendente`: no
 // máximo uma pendência por pessoa e curso, mas só ENQUANTO pendente — depois
@@ -20,6 +22,18 @@ import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 // mesmo curso. Se o índice fosse total (sem o `where status = 'pending'`),
 // quem foi negado uma vez nunca mais poderia pedir — o oposto do que a
 // tela do cadeado promete.
+//
+// E, achado na rodada de correção 1 desta tarefa: `access_requests` tem
+// DUAS chaves estrangeiras para `profiles` (user_id e decided_by,
+// 0001_schema_inicial.sql). Um embed `profiles(...)` sem qualificar qual
+// delas é ambíguo para o PostgREST — devolve HTTP 300 (PGRST201) em vez de
+// dados, e isso passou batido porque o `error` era descartado e o
+// `as unknown as Linha[]` que envolvia o resultado apaga justamente o
+// `SelectQueryError` que o supabase-js geraria para um select assim. A
+// última seção deste arquivo roda as MESMAS strings de select que a
+// produção usa (importadas de access-requests-query.ts, não reescritas
+// aqui) contra a API de verdade, para este teste não poder divergir do que
+// a produção manda.
 const db = adminClient()
 const lixeira = criarLixeira()
 
@@ -99,6 +113,13 @@ beforeAll(async () => {
 afterAll(() => lixeira.limpar())
 
 describe('solicitacoes_decide e solicitacoes_leitura — RLS contra o Postgres de verdade, não a Server Action', () => {
+  // pedidoAId/pedidoBId, criados uma vez no beforeAll deste describe, nunca
+  // são mutados por nenhum `it` abaixo — os dois primeiros só tentam UPDATE
+  // (recusado por RLS: a linha não muda) ou leem; "um admin lê e decide"
+  // cria e decide seu PRÓPRIO par, com usuários próprios, para não competir
+  // pelo índice único parcial nem depender de rodar depois dos outros dois.
+  // Isso é deliberado: sob `--shuffle` os três `it`s podem rodar em
+  // qualquer ordem sem se afetarem.
   let pedidoAId: string
   let pedidoBId: string
 
@@ -171,19 +192,58 @@ describe('solicitacoes_decide e solicitacoes_leitura — RLS contra o Postgres d
   })
 
   it('um admin lê as duas solicitações e consegue decidir cada uma', async () => {
+    // Par PRÓPRIO deste teste, com usuários próprios (não memberA/memberB
+    // nem pedidoAId/pedidoBId): os dois `it`s acima esperam aquele par
+    // sempre pendente, então decidi-lo aqui quebraria sob `--shuffle` se
+    // este teste rodasse antes deles.
+    const stamp = Date.now()
+    const emailMemberC = `membro-c-solicitacoes-${stamp}@gexcorp.com.br`
+    const memberCId = await createTestUser({
+      email: emailMemberC,
+      fullName: 'Colega C Solicitações',
+      role: 'member',
+      areaId: area,
+    })
+    lixeira.usuario(memberCId)
+
+    const emailMemberD = `membro-d-solicitacoes-${stamp}@gexcorp.com.br`
+    const memberDId = await createTestUser({
+      email: emailMemberD,
+      fullName: 'Colega D Solicitações',
+      role: 'member',
+      areaId: area,
+    })
+    lixeira.usuario(memberDId)
+
+    const comoMemberC = await authClient(emailMemberC)
+    const { data: pedidoC, error: pedidoCErro } = await comoMemberC
+      .from('access_requests')
+      .insert({ user_id: memberCId, course_id: curso, status: 'pending' })
+      .select('id')
+      .single()
+    if (pedidoCErro) throw pedidoCErro
+
+    const comoMemberD = await authClient(emailMemberD)
+    const { data: pedidoD, error: pedidoDErro } = await comoMemberD
+      .from('access_requests')
+      .insert({ user_id: memberDId, course_id: curso, status: 'pending' })
+      .select('id')
+      .single()
+    if (pedidoDErro) throw pedidoDErro
+
     const comoAdmin = await authClient(emailAdmin)
 
     const { data: ambas, error: leituraErro } = await comoAdmin
       .from('access_requests')
       .select('id')
-      .in('id', [pedidoAId, pedidoBId])
+      .in('id', [pedidoC!.id, pedidoD!.id])
     expect(leituraErro).toBeNull()
     expect(ambas).toHaveLength(2)
 
     const aprovar = await comoAdmin
       .from('access_requests')
       .update({ status: 'approved', decided_by: adminId, decided_at: new Date().toISOString() })
-      .eq('id', pedidoAId)
+      .eq('id', pedidoC!.id)
       .eq('status', 'pending')
       .select('id')
     expect(aprovar.error).toBeNull()
@@ -192,16 +252,16 @@ describe('solicitacoes_decide e solicitacoes_leitura — RLS contra o Postgres d
     const negar = await comoAdmin
       .from('access_requests')
       .update({ status: 'denied', decided_by: adminId, decided_at: new Date().toISOString() })
-      .eq('id', pedidoBId)
+      .eq('id', pedidoD!.id)
       .eq('status', 'pending')
       .select('id')
     expect(negar.error).toBeNull()
     expect(negar.data).toHaveLength(1)
 
-    const { data: statusA } = await db.from('access_requests').select('status').eq('id', pedidoAId).single()
-    expect(statusA!.status).toBe('approved')
-    const { data: statusB } = await db.from('access_requests').select('status').eq('id', pedidoBId).single()
-    expect(statusB!.status).toBe('denied')
+    const { data: statusC } = await db.from('access_requests').select('status').eq('id', pedidoC!.id).single()
+    expect(statusC!.status).toBe('approved')
+    const { data: statusD } = await db.from('access_requests').select('status').eq('id', pedidoD!.id).single()
+    expect(statusD!.status).toBe('denied')
   })
 })
 
@@ -266,5 +326,29 @@ describe('access_requests_uma_pendente — índice único parcial', () => {
       .select('id')
       .single()
     expect(terceira.error).toBeNull()
+  })
+})
+
+describe('SELECT_FILA_SOLICITACOES e SELECT_SOLICITACAO_DECISAO — a MESMA string de select que a produção usa', () => {
+  // `profiles` tem duas FKs em access_requests (user_id e decided_by,
+  // 0001_schema_inicial.sql). Um embed `profiles(...)` sem qualificar qual
+  // delas é ambíguo para o PostgREST: devolve HTTP 300 (PGRST201) em vez de
+  // dados, e o `as unknown as Linha[]` que listAccessRequests/
+  // decideAccessRequest usam para tipar o resultado apaga o
+  // `SelectQueryError` que o supabase-js geraria para pegar isso em tempo de
+  // compilação — só rodar a string de verdade contra a API pega o problema.
+  // As duas constantes vêm de access-requests-query.ts (importadas, não
+  // copiadas) para este teste não poder divergir do que a produção manda.
+  // `.limit(0)` basta: o PostgREST valida a FORMA do embed (e devolveria
+  // PGRST201 se fosse ambíguo) antes de aplicar o limite — não precisa de
+  // linha nenhuma casando para provar que o select em si resolve.
+  it('a listagem da fila do admin (SELECT_FILA_SOLICITACOES) resolve sem ambiguidade de embed', async () => {
+    const { error } = await db.from('access_requests').select(SELECT_FILA_SOLICITACOES).limit(0)
+    expect(error).toBeNull()
+  })
+
+  it('a leitura de contexto da decisão (SELECT_SOLICITACAO_DECISAO) resolve sem ambiguidade de embed', async () => {
+    const { error } = await db.from('access_requests').select(SELECT_SOLICITACAO_DECISAO).limit(0)
+    expect(error).toBeNull()
   })
 })

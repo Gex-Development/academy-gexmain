@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { LockedCourse } from '@/components/catalog/locked-course'
 import { ProgressBar } from '@/components/progress/progress-bar'
-import { formatDuration } from '@/lib/format'
 import { getCurrentUser } from '@/lib/auth/session'
+import { formatDuration } from '@/lib/format'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { getCompletedLessonIds } from '@/server/progress'
 import { getCourseView } from '@/server/viewer'
@@ -19,13 +19,17 @@ export default async function CursoPage({ params }: { params: Promise<{ slug: st
     // interna dela viu, o (app)/layout.tsx também garante existir aqui.
     const user = await getCurrentUser()
     const supabase = await createServerSupabase()
-    const { data: pendente } = await supabase
+    const { data: pendente, error } = await supabase
       .from('access_requests')
       .select('id')
       .eq('user_id', user!.id)
       .eq('course_id', course.id)
       .eq('status', 'pending')
       .maybeSingle()
+    // Descartar este erro faria a tela mostrar o formulário para quem já tem
+    // um pedido em aberto — a pessoa só descobriria ao enviar de novo e
+    // bater no 23505 do índice único.
+    if (error) throw error
 
     return <LockedCourse course={course} requestStatus={pendente ? 'pending' : 'none'} />
   }
