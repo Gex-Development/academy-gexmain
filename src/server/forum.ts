@@ -147,12 +147,17 @@ export async function listQuestions(lessonId: string): Promise<ForumQuestion[]> 
   // sendo a segunda camada. SELECT_PERGUNTAS não inclui `profiles(...)` (ver
   // o comentário lá): os nomes vêm à parte, por buscarPerfisAutores.
   const supabase = await createServerSupabase()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('questions')
     .select(SELECT_PERGUNTAS)
     .eq('lesson_id', ctx.lessonId)
     .order('is_pinned', { ascending: false })
     .order('created_at', { ascending: false })
+  // `error` não é descartado: uma consulta que falhasse (RLS regredida,
+  // embed ambíguo etc.) devolveria `data: null`, e mostrar "Nenhuma dúvida
+  // ainda. Seja o primeiro a perguntar." nesse caso seria indistinguível de
+  // a lista estar vazia de verdade — o aluno repergunta o que já perguntou.
+  if (error) throw error
 
   const linhas = (data ?? []) as unknown as LinhaPergunta[]
   if (linhas.length === 0) return []
@@ -179,11 +184,15 @@ export async function listPendingQuestions(): Promise<PendingQuestion[]> {
   // listQuestions. SELECT_FILA_DUVIDAS não inclui `profiles(...)` pelo mesmo
   // motivo documentado lá — os nomes vêm à parte, por buscarPerfisAutores.
   const supabase = await createServerSupabase()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('questions')
     .select(SELECT_FILA_DUVIDAS)
     .is('resolved_at', null)
     .order('created_at', { ascending: true })
+  // `error` não é descartado: mesmo raciocínio de listQuestions — sem isto,
+  // uma consulta que falhasse mostraria "Tudo em dia" ao líder, indistinguível
+  // de a fila estar vazia de verdade.
+  if (error) throw error
 
   const linhas = ((data ?? []) as unknown as LinhaFilaDuvidas[]).filter((q) =>
     pertenceAFilaDoLider(user, q.lessons.courses.area_id),

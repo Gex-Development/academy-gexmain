@@ -55,18 +55,28 @@ export async function getDashboard(): Promise<{ pessoas: PersonProgress[]; curso
 
   const admin = createAdminSupabase()
 
-  const [{ data: perfis }, { data: cursos }, { data: liberacoes }, { data: progresso }] = await Promise.all([
+  const [perfisRes, cursosRes, liberacoesRes, progressoRes] = await Promise.all([
     admin.from('profiles').select(SELECT_PAINEL_PERFIS).eq('status', 'active').order('full_name'),
     admin.from('courses').select(SELECT_PAINEL_CURSOS),
     admin.from('course_access').select(SELECT_PAINEL_LIBERACOES),
     admin.from('lesson_progress').select(SELECT_PAINEL_PROGRESSO),
   ])
+  // `error` não é descartado em nenhuma das quatro: se qualquer consulta
+  // falhar (embed ambíguo, RLS regredida etc.), `data` vem `null`, e o
+  // `?? []` de antes fazia a tela renderizar "Todo mundo concluiu a trilha
+  // inicial" — uma resposta errada, afirmativa e tranquilizadora, para a
+  // pergunta que é a razão de esta tela existir. Mesmo raciocínio de
+  // listAccessRequests, em access-requests.ts.
+  if (perfisRes.error) throw perfisRes.error
+  if (cursosRes.error) throw cursosRes.error
+  if (liberacoesRes.error) throw liberacoesRes.error
+  if (progressoRes.error) throw progressoRes.error
 
   return montarPainel(
     atual,
-    (perfis ?? []) as unknown as LinhaPerfilPainel[],
-    (cursos ?? []) as unknown as LinhaCursoPainel[],
-    (liberacoes ?? []) as LinhaLiberacaoPainel[],
-    (progresso ?? []) as LinhaProgressoPainel[],
+    (perfisRes.data ?? []) as unknown as LinhaPerfilPainel[],
+    (cursosRes.data ?? []) as unknown as LinhaCursoPainel[],
+    (liberacoesRes.data ?? []) as LinhaLiberacaoPainel[],
+    (progressoRes.data ?? []) as LinhaProgressoPainel[],
   )
 }
