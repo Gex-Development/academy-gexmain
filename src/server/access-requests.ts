@@ -90,6 +90,36 @@ export async function requestAccess(
   }
 }
 
+/**
+ * Estado do pedido de acesso pendente da pessoa logada para UM curso —
+ * usado pela tela de curso trancado (`/curso/[slug]`) para decidir entre
+ * mostrar o formulário de pedir acesso ou "seu pedido está em análise".
+ *
+ * Chamada só quando `course.access === 'none'`: getCourseView já garante
+ * sessão ativa antes de devolver um curso não nulo (ver comentário em
+ * src/server/viewer.ts), então o `null` de `getCurrentUser()` aqui não é um
+ * caminho real — só o tipo exige a checagem.
+ */
+export async function getPendingRequestStatus(courseId: string): Promise<'pending' | 'none'> {
+  const user = await getCurrentUser()
+  if (!user) return 'none'
+
+  const supabase = await createServerSupabase()
+  const { data: pendente, error } = await supabase
+    .from('access_requests')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('course_id', courseId)
+    .eq('status', 'pending')
+    .maybeSingle()
+  // Descartar este erro faria a tela mostrar o formulário para quem já tem
+  // um pedido em aberto — a pessoa só descobriria ao enviar de novo e bater
+  // no 23505 do índice único.
+  if (error) throw error
+
+  return pendente ? 'pending' : 'none'
+}
+
 export async function listAccessRequests(): Promise<PendingRequest[]> {
   const user = await getCurrentUser()
   if (!user || user.role !== 'admin' || user.status !== 'active') return []
