@@ -56,3 +56,30 @@ export async function authClient(email: string, password = SENHA_DE_TESTE) {
   if (error) throw error
   return client
 }
+
+/**
+ * Acumula os ids criados por um arquivo de teste e os remove no fim.
+ *
+ * Os testes rodam contra o projeto Supabase de verdade — o mesmo que os líderes
+ * usam. Sem isso, cada execução deixa dezenas de usuários e áreas para trás.
+ * A ordem de remoção importa: cursos antes de áreas (`courses.area_id` é
+ * ON DELETE RESTRICT) e usuários por último (apagar `auth.users` derruba o
+ * perfil em cascata).
+ */
+export function criarLixeira() {
+  const cursos: string[] = []
+  const areas: string[] = []
+  const usuarios: string[] = []
+
+  return {
+    curso: (id: string) => cursos.push(id),
+    area: (id: string) => areas.push(id),
+    usuario: (id: string) => usuarios.push(id),
+    async limpar() {
+      const db = adminClient()
+      for (const id of cursos) await db.from('courses').delete().eq('id', id)
+      for (const id of areas) await db.from('areas').delete().eq('id', id)
+      for (const id of usuarios) await db.auth.admin.deleteUser(id)
+    },
+  }
+}
