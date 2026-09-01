@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import { LockedCourse } from '@/components/catalog/locked-course'
 import { ProgressBar } from '@/components/progress/progress-bar'
 import { formatDuration } from '@/lib/format'
+import { getCurrentUser } from '@/lib/auth/session'
+import { createServerSupabase } from '@/lib/supabase/server'
 import { getCompletedLessonIds } from '@/server/progress'
 import { getCourseView } from '@/server/viewer'
 
@@ -11,7 +13,22 @@ export default async function CursoPage({ params }: { params: Promise<{ slug: st
   const course = await getCourseView(slug)
   if (!course) notFound()
 
-  if (course.access === 'none') return <LockedCourse course={course} />
+  if (course.access === 'none') {
+    // getCourseView já confirma sessão ativa antes de devolver um curso não
+    // nulo (ver src/server/viewer.ts) — o mesmo usuário que a checagem
+    // interna dela viu, o (app)/layout.tsx também garante existir aqui.
+    const user = await getCurrentUser()
+    const supabase = await createServerSupabase()
+    const { data: pendente } = await supabase
+      .from('access_requests')
+      .select('id')
+      .eq('user_id', user!.id)
+      .eq('course_id', course.id)
+      .eq('status', 'pending')
+      .maybeSingle()
+
+    return <LockedCourse course={course} requestStatus={pendente ? 'pending' : 'none'} />
+  }
 
   const concluidas = await getCompletedLessonIds(course.id)
 

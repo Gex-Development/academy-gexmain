@@ -1,6 +1,13 @@
 import type { CourseView } from '@/server/viewer'
+import { RequestAccessForm } from './request-access-form'
 
-export function LockedCourse({ course }: { course: CourseView }) {
+export function LockedCourse({
+  course,
+  requestStatus,
+}: {
+  course: CourseView
+  requestStatus: 'none' | 'pending'
+}) {
   return (
     <div className="mx-auto max-w-lg rounded-card border border-borda bg-superficie p-8 text-center">
       <div
@@ -23,6 +30,7 @@ export function LockedCourse({ course }: { course: CourseView }) {
       <p className="mt-1 text-xs text-texto-suave">{course.areaName ?? 'Trilha inicial'}</p>
       {course.description && <p className="mt-4 text-sm text-texto-suave">{course.description}</p>}
       <p className="mt-6 text-sm text-texto-suave">Você ainda não tem acesso a este curso.</p>
+      <RequestAccessForm courseSlug={course.slug} jaSolicitado={requestStatus === 'pending'} />
     </div>
   )
 }
