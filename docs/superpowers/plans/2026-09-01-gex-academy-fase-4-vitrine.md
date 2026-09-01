@@ -173,7 +173,6 @@ Substitua o bloco `@theme` e as regras de `html`/`body` em `src/app/globals.css`
   --color-marca-700: #003b83;
 
   --color-ciano: #01cdff;
-  --color-ciano-suave: #7fe3ff;
 
   --color-superficie: #ffffff;
   --color-fundo: #f5f6f8;
