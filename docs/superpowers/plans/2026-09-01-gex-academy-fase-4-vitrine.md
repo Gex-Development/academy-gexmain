@@ -304,7 +304,7 @@ export function ThemeToggle() {
 
 - [ ] **Step 8: Criar a logo**
 
-Crie `src/components/layout/gex-logo.tsx`. O SVG é silhueta de cor única — `fill="currentColor"` faz uma cópia servir os dois temas. Copie o `viewBox` e os `<path>` de `Logo completa.svg` (o arquivo que o dono do produto forneceu), trocando cada `fill="black"` por nada e pondo `fill="currentColor"` no `<svg>`:
+Crie `src/components/layout/gex-logo.tsx`. O SVG é silhueta de cor única — `fill="currentColor"` faz uma cópia servir os dois temas. Os 24 `<path>` estão em `public/logo-gex.svg` (a logo oficial, fornecida pelo dono do produto). Copie-os para o componente **removendo o `fill="black"` de cada um** — se sobrar um só, aquela parte da logo fica preta no tema escuro e some contra o fundo:
 
 ```tsx
 export function GexLogo({ className }: { className?: string }) {
