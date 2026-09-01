@@ -1,10 +1,17 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useRef, useState, type FormEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
-import { ALLOWED_ATTACHMENT_MIME } from '@/lib/storage/attachments'
-import { deleteAttachment, uploadAttachment, type AttachmentRow } from '@/server/attachments'
+import { ALLOWED_ATTACHMENT_MIME, ATTACHMENT_BUCKET } from '@/lib/storage/attachments'
+import { createBrowserSupabase } from '@/lib/supabase/client'
+import {
+  confirmAttachmentUpload,
+  createAttachmentUpload,
+  deleteAttachment,
+  type AttachmentRow,
+} from '@/server/attachments'
 
 const ACCEPT = Object.keys(ALLOWED_ATTACHMENT_MIME).join(',')
 
@@ -20,9 +27,68 @@ export function AttachmentManager({
   lessonId: string
   attachments: AttachmentRow[]
 }) {
-  const [uploadState, uploadAction, uploading] = useActionState(uploadAttachment, null)
+  const router = useRouter()
+  const formRef = useRef<HTMLFormElement>(null)
+  const [enviando, setEnviando] = useState(false)
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null)
   const [deleteState, deleteAction] = useActionState(deleteAttachment, null)
-  const erro = (!uploadState?.ok && uploadState?.error) || (!deleteState?.ok && deleteState?.error)
+
+  // O upload não cabe num único <form action={...}> de Server Action: o
+  // arquivo sobe direto do navegador para o Storage (uploadToSignedUrl),
+  // entre autorizar/mintar (createAttachmentUpload) e confirmar/gravar a
+  // linha (confirmAttachmentUpload). Por isso a orquestração é manual aqui,
+  // não useActionState — mas as duas actions continuam recebendo FormData e
+  // devolvendo ActionResult, como o resto do projeto.
+  async function enviar(evento: FormEvent<HTMLFormElement>) {
+    evento.preventDefault()
+    const form = evento.currentTarget
+    const input = form.elements.namedItem('file') as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (!file) return
+
+    setEnviando(true)
+    setErroEnvio(null)
+    try {
+      const mintForm = new FormData()
+      mintForm.set('lessonId', lessonId)
+      mintForm.set('fileName', file.name)
+      mintForm.set('mimeType', file.type)
+      mintForm.set('sizeBytes', String(file.size))
+
+      const mint = await createAttachmentUpload(null, mintForm)
+      if (!mint.ok) {
+        setErroEnvio(mint.error)
+        return
+      }
+
+      const browser = createBrowserSupabase()
+      const { error: erroUpload } = await browser.storage
+        .from(ATTACHMENT_BUCKET)
+        .uploadToSignedUrl(mint.data.path, mint.data.token, file, { contentType: file.type })
+      if (erroUpload) {
+        setErroEnvio('Não foi possível enviar o arquivo. Tente novamente.')
+        return
+      }
+
+      const confirmForm = new FormData()
+      confirmForm.set('lessonId', lessonId)
+      confirmForm.set('path', mint.data.path)
+      confirmForm.set('fileName', file.name)
+
+      const confirmado = await confirmAttachmentUpload(null, confirmForm)
+      if (!confirmado.ok) {
+        setErroEnvio(confirmado.error)
+        return
+      }
+
+      formRef.current?.reset()
+      router.refresh()
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  const erro = erroEnvio || (!deleteState?.ok && deleteState?.error)
 
   return (
     <div className="rounded-card border border-borda bg-superficie p-4">
@@ -51,8 +117,7 @@ export function AttachmentManager({
         ))}
       </ul>
 
-      <form action={uploadAction} className="flex flex-col gap-3">
-        <input type="hidden" name="lessonId" value={lessonId} />
+      <form ref={formRef} onSubmit={enviar} className="flex flex-col gap-3">
         <Field label="Novo material" htmlFor="file" hint="Até 50 MB. PDF, Word, Excel, PowerPoint, CSV, ZIP ou imagem.">
           <input id="file" name="file" type="file" required accept={ACCEPT} className="text-xs" />
         </Field>
@@ -61,8 +126,8 @@ export function AttachmentManager({
             {erro}
           </p>
         )}
-        <Button type="submit" variant="secundario" disabled={uploading}>
-          {uploading ? 'Enviando…' : 'Anexar'}
+        <Button type="submit" variant="secundario" disabled={enviando}>
+          {enviando ? 'Enviando…' : 'Anexar'}
         </Button>
       </form>
     </div>

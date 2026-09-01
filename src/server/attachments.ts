@@ -5,13 +5,10 @@ import { z } from 'zod'
 import { canAccessCourse } from '@/lib/access'
 import { assertRole } from '@/lib/auth/guards'
 import { getCurrentUser } from '@/lib/auth/session'
-import {
-  ATTACHMENT_BUCKET,
-  buildAttachmentPath,
-  validateAttachment,
-} from '@/lib/storage/attachments'
+import { ATTACHMENT_BUCKET } from '@/lib/storage/attachments'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { mintAttachmentUpload, verifyAndRegisterAttachment } from './attachments-upload'
 import { getLessonForEdit } from './lessons'
 import { ok, toActionError, type ActionResult } from './result'
 
@@ -83,54 +80,94 @@ export async function listAttachments(lessonId: string): Promise<AttachmentRow[]
   }))
 }
 
-export async function uploadAttachment(
+const mintSchema = z.object({
+  lessonId: z.string().uuid(),
+  fileName: z.string().trim().min(1).max(255),
+  mimeType: z.string().trim().min(1).max(255),
+  sizeBytes: z.coerce.number().int().positive(),
+})
+
+/**
+ * Passo 1 dos dois de upload: autoriza e minta a URL assinada.
+ *
+ * O arquivo NUNCA passa por este servidor — Server Actions do Next.js
+ * limitam o corpo da requisição a 1 MB por padrão, e o teto do runtime
+ * serverless da Vercel (~4,5 MB) continua valendo mesmo se esse limite for
+ * ampliado na configuração. Um material de 50 MB nunca chegaria aqui. Por
+ * isso esta action só recebe METADADOS (nome, tipo, tamanho declarados) — o
+ * navegador sobe os bytes direto para o Storage, com a URL assinada que ela
+ * devolve (ver confirmAttachmentUpload, passo 2, que valida o que chegou de
+ * verdade em vez de confiar no que foi declarado aqui).
+ */
+export async function createAttachmentUpload(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ path: string; token: string }>> {
+  try {
+    assertRole(await getCurrentUser(), ['admin', 'leader'])
+
+    const parsed = mintSchema.safeParse({
+      lessonId: formData.get('lessonId'),
+      fileName: formData.get('fileName'),
+      mimeType: formData.get('mimeType'),
+      sizeBytes: formData.get('sizeBytes'),
+    })
+    if (!parsed.success) return { ok: false, error: 'Dados de upload inválidos.' }
+
+    const lesson = await getLessonForEdit(parsed.data.lessonId)
+    if (!lesson) return { ok: false, error: 'Você não tem permissão para editar esta aula.' }
+
+    const admin = createAdminSupabase()
+    return await mintAttachmentUpload(admin, parsed.data.lessonId, {
+      name: parsed.data.fileName,
+      type: parsed.data.mimeType,
+      size: parsed.data.sizeBytes,
+    })
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+const confirmSchema = z.object({
+  lessonId: z.string().uuid(),
+  path: z.string().trim().min(1).max(600),
+  fileName: z.string().trim().min(1).max(255),
+})
+
+/**
+ * Passo 2: depois que o navegador sobe o arquivo direto para o Storage (com
+ * a URL assinada do passo 1), esta action confirma o que chegou de verdade
+ * — não o que foi declarado ao mintar — e só então cria a linha.
+ */
+export async function confirmAttachmentUpload(
   _prev: unknown,
   formData: FormData,
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const user = assertRole(await getCurrentUser(), ['admin', 'leader'])
 
-    const lessonId = z.string().uuid().safeParse(formData.get('lessonId'))
-    if (!lessonId.success) return { ok: false, error: 'Aula inválida.' }
+    const parsed = confirmSchema.safeParse({
+      lessonId: formData.get('lessonId'),
+      path: formData.get('path'),
+      fileName: formData.get('fileName'),
+    })
+    if (!parsed.success) return { ok: false, error: 'Dados de upload inválidos.' }
 
-    const lesson = await getLessonForEdit(lessonId.data)
+    const lesson = await getLessonForEdit(parsed.data.lessonId)
     if (!lesson) return { ok: false, error: 'Você não tem permissão para editar esta aula.' }
 
-    const file = formData.get('file')
-    if (!(file instanceof File)) return { ok: false, error: 'Escolha um arquivo.' }
-
-    const erro = validateAttachment({ name: file.name, type: file.type, size: file.size })
-    if (erro) return { ok: false, error: erro }
-
-    const path = buildAttachmentPath(lessonId.data, file.name)
     const admin = createAdminSupabase()
+    const resultado = await verifyAndRegisterAttachment(admin, {
+      lessonId: parsed.data.lessonId,
+      path: parsed.data.path,
+      fileName: parsed.data.fileName,
+      uploadedBy: user.id,
+    })
 
-    const { error: uploadError } = await admin.storage
-      .from(ATTACHMENT_BUCKET)
-      .upload(path, file, { contentType: file.type, upsert: false })
-    if (uploadError) throw uploadError
-
-    const { data, error } = await admin
-      .from('lesson_attachments')
-      .insert({
-        lesson_id: lessonId.data,
-        file_name: file.name,
-        storage_path: path,
-        mime_type: file.type,
-        size_bytes: file.size,
-        uploaded_by: user.id,
-      })
-      .select('id')
-      .single()
-
-    if (error) {
-      // Sem a linha no banco o arquivo fica órfão no bucket: remove.
-      await admin.storage.from(ATTACHMENT_BUCKET).remove([path])
-      throw error
+    if (resultado.ok) {
+      revalidatePath(`/gerenciar/cursos/${lesson.courseId}/aulas/${parsed.data.lessonId}`)
     }
-
-    revalidatePath(`/gerenciar/cursos/${lesson.courseId}/aulas/${lessonId.data}`)
-    return ok({ id: data.id })
+    return resultado
   } catch (error) {
     return toActionError(error)
   }
