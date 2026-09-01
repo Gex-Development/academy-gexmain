@@ -27,10 +27,23 @@ function Selo({ children }: { children: string }) {
 
 export function QuestionItem({ question }: { question: ForumQuestion }) {
   const [answerState, answerAction, answering] = useActionState(answerQuestion, null)
-  const [, pinAction] = useActionState(togglePinned, null)
-  const [, resolveAction] = useActionState(toggleResolved, null)
-  const [, deleteQuestionAction] = useActionState(deleteQuestion, null)
-  const [, deleteAnswerAction] = useActionState(deleteAnswer, null)
+  const [pinState, pinAction] = useActionState(togglePinned, null)
+  const [resolveState, resolveAction] = useActionState(toggleResolved, null)
+  const [deleteQuestionState, deleteQuestionAction] = useActionState(deleteQuestion, null)
+  const [deleteAnswerState, deleteAnswerAction] = useActionState(deleteAnswer, null)
+
+  // moderar() (src/server/forum.ts) confere as linhas afetadas justamente
+  // porque uma recusa de RLS chega como zero linhas e não como erro — sem
+  // mostrar esse `state` aqui, a tela não diria nada quando o banco recusa a
+  // ação: o botão volta ao normal, nada muda, ninguém sabe por quê. Uma
+  // única mensagem para as três ações de moderação (fixar/desafixar,
+  // resolver/reabrir, excluir pergunta): elas não rodam ao mesmo tempo, então
+  // não há ambiguidade sobre qual erro é de qual botão.
+  const erroModeracao =
+    (pinState && !pinState.ok && pinState.error) ||
+    (resolveState && !resolveState.ok && resolveState.error) ||
+    (deleteQuestionState && !deleteQuestionState.ok && deleteQuestionState.error) ||
+    undefined
 
   return (
     <li className="rounded-card border border-borda bg-superficie p-4">
@@ -80,6 +93,12 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
         </div>
       </div>
 
+      {erroModeracao && (
+        <p role="alert" className="mt-2 text-xs text-perigo">
+          {erroModeracao}
+        </p>
+      )}
+
       {question.answers.length > 0 && (
         <ul className="mt-4 flex flex-col gap-3 border-l-2 border-borda pl-4">
           {question.answers.map((answer) => (
@@ -103,6 +122,12 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {deleteAnswerState && !deleteAnswerState.ok && (
+        <p role="alert" className="mt-2 text-xs text-perigo">
+          {deleteAnswerState.error}
+        </p>
       )}
 
       <form action={answerAction} className="mt-4 flex flex-col gap-2">
