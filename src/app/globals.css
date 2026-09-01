@@ -44,6 +44,14 @@
   --color-acao-texto: #ffffff;
 
   --color-perigo: #c02626;
+  /* Texto sobre o botão de perigo. Par com --color-perigo, mesmo raciocínio
+     de --color-acao/--color-acao-texto logo acima: branco funciona aqui
+     (5,92:1), mas --color-perigo TROCA de tom entre os temas (é usado
+     também como texto solto sobre a superfície, via `text-perigo`, onde o
+     tom precisa mudar por tema) — então o par de texto precisa trocar
+     junto, em vez de escurecer --color-perigo no escuro e arriscar quebrar
+     esse outro uso. Ver :root.dark abaixo. */
+  --color-perigo-texto: #ffffff;
   --color-sucesso: #1f8a4c;
   --color-aviso: #a86b00;
 
@@ -77,6 +85,9 @@
   --color-acao-texto: #221f20;
 
   --color-perigo: #ff6b6b;
+  /* #ff6b6b só tem 2,78:1 com branco — por isso o par troca para o mesmo
+     quase-preto de --color-acao-texto (5,89:1), em vez de branco. */
+  --color-perigo-texto: #221f20;
   --color-sucesso: #4ecf8b;
   --color-aviso: #e0a355;
 }
