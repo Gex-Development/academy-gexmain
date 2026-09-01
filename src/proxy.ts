@@ -36,9 +36,14 @@ export async function proxy(request: NextRequest) {
   const ehPublica = ehRotaPublica(request.nextUrl.pathname)
 
   if (!user && !ehPublica) {
+    const destino = `${request.nextUrl.pathname}${request.nextUrl.search}`
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('redirect', request.nextUrl.pathname)
+    url.search = ''
+    // Inclui a query string do destino original (não só o pathname): sem
+    // isso, uma pessoa barrada numa rota com estado na URL (filtro, página)
+    // perderia esse estado ao ser mandada para o login e de volta.
+    url.searchParams.set('redirect', destino)
     return NextResponse.redirect(url)
   }
 

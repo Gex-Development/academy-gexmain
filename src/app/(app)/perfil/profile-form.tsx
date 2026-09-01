@@ -22,7 +22,14 @@ export function ProfileForm({
     event.preventDefault()
     setSenhaMsg(null)
 
-    const form = new FormData(event.currentTarget)
+    // Capturado antes do primeiro await: o React zera event.currentTarget de
+    // forma síncrona assim que o handler devolve o controle, então usá-lo
+    // depois de um await (como fazia o `event.currentTarget.reset()` no fim
+    // desta função) é sempre null e lança TypeError em toda troca de senha
+    // bem-sucedida — uma promise rejeitada sem handler, silenciosa porque a
+    // mensagem de sucesso já tinha sido definida antes da exceção.
+    const formEl = event.currentTarget
+    const form = new FormData(formEl)
     const senha = String(form.get('password'))
     if (senha.length < 8) {
       setSenhaMsg({ tipo: 'erro', texto: 'A senha precisa de ao menos 8 caracteres.' })
@@ -41,7 +48,7 @@ export function ProfileForm({
         ? { tipo: 'erro', texto: 'Não foi possível trocar a senha.' }
         : { tipo: 'ok', texto: 'Senha atualizada.' },
     )
-    event.currentTarget.reset()
+    formEl.reset()
   }
 
   return (

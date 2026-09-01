@@ -38,7 +38,7 @@ export async function criarUsuarioDeTeste(input: {
   })
   if (error || !data.user) throw error ?? new Error('usuário não criado')
 
-  await db.from('profiles').insert({
+  const { error: profileError } = await db.from('profiles').insert({
     id: data.user.id,
     full_name: input.fullName,
     email: input.email,
@@ -46,6 +46,11 @@ export async function criarUsuarioDeTeste(input: {
     area_id: input.areaId ?? null,
     status: input.status ?? 'active',
   })
+  // Sem checar isto, um fixture que falhou silenciosamente vira, mais tarde,
+  // um timeout confuso de locator do Playwright (a página nunca chega ao
+  // estado esperado porque o perfil nunca existiu) — em vez de apontar direto
+  // para a causa. Mesmo tratamento de tests/db/client.ts:39.
+  if (profileError) throw profileError
 
   return data.user.id
 }

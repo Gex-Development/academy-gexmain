@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { ok, toActionError, type ActionResult } from './result'
 
@@ -16,13 +17,26 @@ export async function activateAccount(): Promise<ActionResult<null>> {
     } = await supabase.auth.getUser()
     if (!user) return { ok: false, error: 'Sessão expirada. Abra o link do convite novamente.' }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({ status: 'active' })
       .eq('id', user.id)
       .eq('status', 'invited')
+      .select('id')
 
     if (error) throw error
+
+    // Um update barrado por RLS (ou pelo filtro .eq('status', 'invited') não
+    // batendo mais) devolve sucesso com zero linhas afetadas, não erro. Sem
+    // esta checagem, a tela redireciona para "/" achando que ativou a conta;
+    // o layout então vê status ainda 'invited' e manda de volta para
+    // /convite — um loop silencioso, sem nenhuma mensagem para a pessoa.
+    if (!data || data.length === 0) {
+      return {
+        ok: false,
+        error: 'Não foi possível ativar a conta. Peça um novo link de convite ao administrador.',
+      }
+    }
 
     revalidatePath('/', 'layout')
     return ok(null)
@@ -30,8 +44,6 @@ export async function activateAccount(): Promise<ActionResult<null>> {
     return toActionError(error)
   }
 }
-
-import { z } from 'zod'
 
 const perfilSchema = z.object({
   fullName: z.string().trim().min(3, 'Informe o nome completo.').max(120),
@@ -53,15 +65,25 @@ export async function updateProfile(
     const parsed = perfilSchema.safeParse(Object.fromEntries(formData))
     if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update({
         full_name: parsed.data.fullName,
         avatar_url: parsed.data.avatarUrl || null,
       })
       .eq('id', user.id)
+      .select('id')
 
     if (error) throw error
+
+    // Mesmo raciocínio de activateAccount: um update que não bate em nenhuma
+    // política (por exemplo uma pessoa desativada entre o carregamento da
+    // tela e o clique em "Salvar" — profiles_edita_o_proprio exige
+    // auth_is_active()) devolve sucesso com zero linhas, e sem esta checagem
+    // a tela diria "Perfil salvo." sem ter salvado nada.
+    if (!data || data.length === 0) {
+      return { ok: false, error: 'Não foi possível salvar o perfil. Faça login novamente.' }
+    }
 
     revalidatePath('/perfil')
     revalidatePath('/', 'layout')

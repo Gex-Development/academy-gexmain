@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { CurrentUser } from '@/lib/auth/session'
 import { navLinksForRole } from './nav-links'
+import { SignOutButton } from './sign-out-button'
 
 export function AppShell({ user, children }: { user: CurrentUser; children: ReactNode }) {
   const links = navLinksForRole(user.role)
@@ -25,6 +26,7 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
             ))}
           </nav>
           <span className="text-sm text-texto-suave">{user.fullName}</span>
+          <SignOutButton />
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>

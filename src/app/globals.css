@@ -1,6 +1,16 @@
 @import 'tailwindcss';
 
 /*
+ * O detector de conteúdo do Tailwind v4 varre todo o repositório por padrão,
+ * inclusive docs/*.md — nomes de classe citados em prosa de plano/spec (ex.:
+ * "use bg-perigo aqui") acabavam entrando no CSS final só por aparecerem
+ * como texto num markdown, mesmo sem nenhum componente usá-los de verdade.
+ * Caminho relativo a partir deste arquivo (src/app/globals.css): dois níveis
+ * acima chegam à raiz do projeto, onde fica docs/.
+ */
+@source not "../../docs";
+
+/*
  * Identidade visual da GEX Academy.
  * Enquanto o manual de marca não chega, estes valores são provisórios.
  * Trocar a identidade definitiva significa alterar SOMENTE este bloco —

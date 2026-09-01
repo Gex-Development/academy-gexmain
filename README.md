@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GEX Academy
 
-## Getting Started
+GEX Academy é a plataforma interna de treinamento da GEX: cursos organizados por área da empresa, com trilha de onboarding, fórum de dúvidas por aula e controle de acesso por papel (admin, líder, colaborador). O acesso é só por convite — não existe cadastro aberto.
 
-First, run the development server:
+## Pré-requisitos
+
+- Node 20.12+ (o script de banco usa `process.loadEnvFile`, disponível a partir dessa versão).
+- Um projeto Supabase de **desenvolvimento** já criado no [painel do Supabase](https://supabase.com/dashboard). Não há Supabase local nem Docker configurados neste projeto — todo `npm run db:*` e todo teste de banco fala direto com esse projeto remoto.
+
+## Configuração
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Preencha `.env.local` com os valores do painel do Supabase (Project Settings):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Variável | Onde encontrar | Uso |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API | Next.js e testes |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project Settings → API | Next.js e testes (chave pública) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API | Só servidor — **nunca** prefixar com `NEXT_PUBLIC_`, nunca expor ao navegador |
+| `SUPABASE_PROJECT_REF` | Project Settings → General ("Reference ID") | Só `scripts/db.mjs` (`db:push`/`db:reset`/`db:types`), para montar a connection string direta com o Postgres |
+| `SUPABASE_DB_PASSWORD` | Project Settings → Database | Idem — senha do Postgres do projeto |
+| `RESEND_API_KEY` | — | Reservado para fase futura de notificações por e-mail fora do fluxo de Auth |
+| `EMAIL_FROM` | — | Idem |
+| `NEXT_PUBLIC_SITE_URL` | — | Base usada para montar links de convite/recuperação de senha |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`.env.local` nunca é commitado (está no `.gitignore`).
 
-## Learn More
+## Comandos
 
-To learn more about Next.js, take a look at the following resources:
+| Comando | Faz o quê |
+|---|---|
+| `npm run dev` | Sobe o servidor de desenvolvimento em `http://localhost:3000` |
+| `npm test` | Testes unitários (Vitest, sem tocar banco) |
+| `npm run test:db` | Testes de integração contra o Postgres do projeto Supabase de desenvolvimento, RLS incluído |
+| `npm run test:e2e` | Testes end-to-end (Playwright) contra um `npm run dev` local |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run build` | Build de produção do Next.js |
+| `npm run db:push` | Aplica `supabase/migrations/` pendentes no banco remoto de desenvolvimento |
+| `npm run db:reset` | Recria o banco do zero a partir das migrations |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+> **`npm run db:reset` apaga todos os dados do banco remoto de desenvolvimento.** Esse banco é **compartilhado** por todo mundo que está desenvolvendo — não é uma instância local e descartável. Rodar `db:reset` derruba os dados de qualquer outra pessoa trabalhando no projeto no momento. Avise o time antes de rodar, ou prefira `db:push` quando o objetivo é só aplicar uma migration nova.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Note que `npm run db:types` **não** está listado como algo para rodar neste ambiente: ele exige um runtime de contêiner (Docker) indisponível aqui, e o arquivo `src/lib/supabase/database.types.ts` é mantido **à mão** — ver o comentário no topo desse arquivo.
 
-## Deploy on Vercel
+## Configuração manual no painel do Supabase (obrigatória)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+O código sozinho não deixa o primeiro acesso funcionar. No painel do projeto, em **Authentication**:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Sign-ups desabilitados** — a plataforma é só por convite (`invitePerson`, em `src/server/people.ts`, é o único jeito de criar conta). Desligue sign-up público.
+2. **Email Templates → Invite user**, o link do template precisa ser exatamente:
+   ```
+   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/convite
+   ```
+3. **Email Templates → Reset password**, o link do template precisa ser exatamente:
+   ```
+   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/nova-senha
+   ```
+
+Sem `token_hash` no link (por exemplo, usando `{{ .ConfirmationURL }}` puro ou `token` em vez de `token_hash`), a rota `src/app/auth/confirm/route.ts` nunca recebe o parâmetro que precisa, cai em "link inválido", e ninguém consegue nem ativar a conta nem recuperar a senha.
+
+O SMTP embutido do Supabase (usado enquanto não houver um provedor próprio configurado) libera só **poucos e-mails por hora** num projeto de desenvolvimento. Rode o teste E2E de convite (`admin convida pessoa...`, em `e2e/primeiro-acesso.spec.ts`) com moderação — várias execuções seguidas estouram a cota e passam a falhar por limite de envio, não por bug.
+
+## Onde as coisas vivem
+
+- `src/lib/access/` — regras puras de autorização de conteúdo (quem pode ver qual curso). **Mudar este código sem mudar as políticas RLS correspondentes (nas migrations de `supabase/migrations/`) na mesma alteração deixa as duas camadas divergentes** — uma delas vira a fonte de verdade errada.
+- `src/lib/auth/` — sessão atual (`session.ts`), guarda de papel (`guards.ts`) e lista de rotas públicas (`public-routes.ts`), usada tanto pelo proxy (`src/proxy.ts`) quanto pelos layouts.
+- `src/server/` — server actions. Toda função exportada de um arquivo `'use server'` é um endpoint chamável por qualquer sessão (mesmo sem link nenhum apontando para ela) — cada uma valida entrada com Zod, confere papel e nunca lança para a tela (retorna `ActionResult<T>`).
+- `supabase/migrations/` — única fonte de verdade do schema e das políticas RLS. Aplicadas com `npm run db:push`; nunca editadas depois de já aplicadas — uma correção vira uma migration nova.
+
+## Documentação de projeto
+
+A especificação e os planos de cada fase estão em `docs/superpowers/`:
+
+- `docs/superpowers/specs/2026-08-31-gex-academy-design.md` — especificação
+- `docs/superpowers/plans/2026-08-31-gex-academy-fase-1-fundacao.md` — plano desta fase (autenticação, papéis, áreas)
+- `docs/superpowers/plans/2026-08-31-gex-academy-fase-2-conteudo.md` — plano da fase de conteúdo (cursos, aulas)
+- `docs/superpowers/plans/2026-08-31-gex-academy-fase-3-interacao.md` — plano da fase de interação (fórum, progresso)

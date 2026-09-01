@@ -1,3 +1,12 @@
+// Este arquivo foi escrito à mão a partir do schema em produção no banco
+// remoto de desenvolvimento (supabase/migrations/), porque `supabase gen
+// types` (via `npm run db:types` → scripts/db.mjs) exige um runtime de
+// contêiner (Docker) que não existe nesta máquina, e a chamada falha antes de
+// gerar qualquer saída. Uma geração bem-sucedida no futuro reordena as
+// colunas em ordem alfabética e acrescenta uma chave `__InternalSupabase` no
+// topo — esse diff é só cosmético, reflete o formato do gerador, não deriva
+// (drift) de schema. Ao alterar supabase/migrations/, atualize este arquivo
+// manualmente, na mesma alteração.
 export type Json =
   | string
   | number

@@ -1,3 +1,14 @@
+# AVISO — este arquivo NÃO é aplicado pelo fluxo de trabalho deste projeto.
+# Não há `supabase link` nem Supabase local: scripts/db.mjs conecta direto no
+# banco remoto de desenvolvimento via `--db-url` (SUPABASE_PROJECT_REF +
+# SUPABASE_DB_PASSWORD do .env.local). Mudanças de banco vêm exclusivamente
+# de supabase/migrations/, aplicadas com `npm run db:push`. Configurações de
+# auth (sign-up, templates de e-mail, etc.) vivem no painel do Supabase, não
+# aqui — em especial `enable_signup` abaixo é falso pela CLI local, mas o
+# projeto remoto tem sign-up desabilitado manualmente no painel, porque a
+# plataforma é só por convite. Trate este arquivo como decorativo/histórico
+# (gerado por `supabase init`), não como fonte de verdade.
+#
 # For detailed configuration reference documentation, visit:
 # https://supabase.com/docs/guides/local-development/cli/config
 # A string used to distinguish different Supabase projects on the same host. Defaults to the

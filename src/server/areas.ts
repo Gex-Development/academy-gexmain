@@ -29,12 +29,26 @@ const areaSchema = z.object({
 })
 
 export async function listAreas(): Promise<AreaRow[]> {
+  // Este arquivo é 'use server': cada export é um endpoint chamável (mesma
+  // regra aplicada em listPeople, server/people.ts). Áreas são legíveis por
+  // qualquer colaborador ativo por design — não restringe a admin — mas a
+  // sessão precisa existir e estar ativa; o RLS já limitaria o retorno, mas a
+  // checagem explícita é a regra do projeto.
+  const user = await getCurrentUser()
+  if (!user || user.status !== 'active') return []
+
   const supabase = await createServerSupabase()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('areas')
     .select('id, name, slug, description, color, position')
     .order('position')
     .order('name')
+
+  if (error) {
+    console.error('[listAreas]', error)
+    return []
+  }
+
   return data ?? []
 }
 
@@ -64,7 +78,17 @@ export async function createArea(_prev: unknown, formData: FormData): Promise<Ac
       .single()
 
     if (error) {
-      if (error.code === '23505') return { ok: false, error: 'Já existe uma área com esse nome.' }
+      // A constraint única é no slug (derivado do nome), não no nome em si:
+      // "SEO!!!" e "SEO???" geram o mesmo slug e colidem, mesmo sendo nomes
+      // diferentes — por isso a mensagem fala em "nome parecido", não "esse
+      // nome", para o admin conseguir agir (tentar um nome mais distinto) em
+      // vez de ficar procurando um nome idêntico que não existe.
+      if (error.code === '23505') {
+        return {
+          ok: false,
+          error: 'Já existe uma área com um nome parecido (o identificador gerado colide com o de outra área).',
+        }
+      }
       throw error
     }
 
