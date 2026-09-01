@@ -163,7 +163,7 @@ describe('invariante: sempre existe ao menos um admin ativo (profiles_exige_admi
         .from('profiles')
         .update({ role: 'member' })
         .eq('id', soloAdminId)
-      expect(rebaixarError?.code).toBe('P0001')
+      expect(rebaixarError?.code).toBe('GX001')
       expect(rebaixarError?.message).toBe(
         'A plataforma precisa de ao menos um administrador ativo.',
       )
@@ -180,7 +180,7 @@ describe('invariante: sempre existe ao menos um admin ativo (profiles_exige_admi
         .from('profiles')
         .update({ status: 'inactive' })
         .eq('id', soloAdminId)
-      expect(desativarError?.code).toBe('P0001')
+      expect(desativarError?.code).toBe('GX001')
 
       const { data: aindaAtivo } = await db
         .from('profiles')

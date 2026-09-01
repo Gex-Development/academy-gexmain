@@ -252,6 +252,16 @@ create policy profiles_ativa_a_si on public.profiles
 -- contagem de admins. SECURITY DEFINER pelo mesmo motivo dos helpers acima:
 -- precisa enxergar todos os perfis, não só os que o RLS liberaria para quem
 -- está fazendo o UPDATE/DELETE.
+--
+-- GX001 é o SQLSTATE próprio do projeto para RAISE EXCEPTION pensado para
+-- chegar até a tela: toActionError() só repassa a mensagem de um erro com
+-- esse código. Sem isso a mensagem cairia no SQLSTATE padrão do PL/pgSQL
+-- (P0001), que é também o que praticamente todo RAISE EXCEPTION sem
+-- "using errcode" usa — e aí toActionError não teria como distinguir esta
+-- mensagem, escrita para o usuário, de um RAISE EXCEPTION futuro que
+-- exponha nome de tabela/coluna ou conteúdo de linha sem querer. Todo novo
+-- RAISE EXCEPTION pensado para a tela deve usar "using errcode = 'GX001'";
+-- qualquer outro erro de banco continua batendo na mensagem genérica.
 -- ---------------------------------------------------------------------
 
 create or replace function public.exige_ao_menos_um_admin()
@@ -274,7 +284,8 @@ begin
     where p.role = 'admin' and p.status = 'active' and p.id <> old.id
     for update
   ) then
-    raise exception 'A plataforma precisa de ao menos um administrador ativo.';
+    raise exception 'A plataforma precisa de ao menos um administrador ativo.'
+      using errcode = 'GX001';
   end if;
 
   return case when tg_op = 'DELETE' then old else new end;

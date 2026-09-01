@@ -18,11 +18,14 @@ export function toActionError(error: unknown): ActionResult<never> {
     if (error.name === 'UnauthenticatedError') return fail('Faça login para continuar.')
     if (error.name === 'ForbiddenError') return fail('Você não tem permissão para esta ação.')
 
-    // P0001: RAISE EXCEPTION explícito num trigger do banco (ex.: a invariante
-    // de "sempre precisa existir um admin ativo"). Essas mensagens são escritas
-    // no banco em português, pensadas para quem usa a tela — diferente de um
-    // erro de banco qualquer, não há detalhe interno para esconder aqui.
-    if ('code' in error && (error as { code?: unknown }).code === 'P0001') {
+    // GX001 é o SQLSTATE próprio do projeto — não o P0001 padrão do PL/pgSQL,
+    // que é o que quase todo RAISE EXCEPTION recebe quando ninguém escolhe um
+    // código à mão. Só uma exceção marcada com "using errcode = 'GX001'" chega
+    // até aqui: é a convenção que separa uma mensagem escrita para a tela (sem
+    // nome de tabela, de coluna ou conteúdo de linha) de um erro de banco
+    // qualquer, que pode conter exatamente esse tipo de detalhe e por isso
+    // nunca deve vazar para o usuário.
+    if ('code' in error && (error as { code?: unknown }).code === 'GX001') {
       return fail(error.message)
     }
   }
