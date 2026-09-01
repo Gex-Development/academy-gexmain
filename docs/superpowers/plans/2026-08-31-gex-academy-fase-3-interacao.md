@@ -2760,18 +2760,37 @@ test('colaborador pede acesso, admin aprova e o curso destrava', async ({ page }
 })
 ```
 
-- [ ] **Step 4: Rodar a suíte inteira**
+- [ ] **Step 4: Rodar a suíte**
+
+> **Dois comandos deste passo foram removidos, e não é preferência — é o banco
+> de produção.** Este projeto aponta para o Supabase real da GEX Academy, que já
+> tem a conta de admin do dono do produto e uma área de verdade.
+>
+> **`npm run db:reset` está PROIBIDO.** Ele apaga e recria o banco inteiro.
+> Existe uma trava em `scripts/db.mjs` que exige `-- --apagar <ref>` e barra a
+> chamada sem ela, mas não conte com a trava: não rode o comando. Para aplicar
+> migrations, `npm run db:push`, que é aditivo.
+>
+> **`npm run test:e2e` inteiro está PROIBIDO.** O spec `e2e/primeiro-acesso.spec.ts`
+> dispara um convite de e-mail real, e a cota de envio do projeto está esgotada —
+> a suíte falha por cota e ainda gasta o que sobrou. Rode specs por caminho.
 
 ```bash
-npm run db:reset
 npm test
 npm run test:db
 npm run typecheck
 npm run build
-npm run test:e2e
+npx playwright test e2e/forum-e-progresso.spec.ts
+npx playwright test e2e/solicitacao-de-acesso.spec.ts
+npx playwright test e2e/acesso-bloqueado.spec.ts
 ```
 
 Expected: PASS em todas as etapas.
+
+Se algum dos seus specs novos precisar de um usuário que ainda não existe, crie-o
+pelos helpers de teste, com `criarLixeira`, e **não** por convite de e-mail. Ao
+terminar, confirme com `node scripts/limpar-dados-de-teste.mjs` (que é dry-run por
+padrão) que não sobrou fixture.
 
 - [ ] **Step 5: Commit**
 
