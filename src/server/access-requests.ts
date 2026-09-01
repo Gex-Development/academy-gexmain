@@ -164,10 +164,42 @@ export async function decideAccessRequest(
       .select('id')
     if (error) throw error
     if ((decidida?.length ?? 0) === 0) {
-      // Perdeu a corrida: outro admin decidiu entre a leitura acima e esta
-      // UPDATE. Não segue para course_access nem para o e-mail — quem
-      // decidiu de fato já disparou os dois.
-      return { ok: false, error: 'Esta solicitação já foi decidida.' }
+      // Zero linhas aqui tem DUAS causas possíveis, não uma: (a) perdeu a
+      // corrida — outro admin decidiu entre a leitura acima e esta UPDATE —
+      // ou (b) é uma RETENTATIVA de uma aprovação que já tinha marcado
+      // status='approved' nesta própria UPDATE, numa chamada anterior, mas
+      // cujo INSERT em course_access falhou depois por algum erro que não
+      // '23505' (rede, timeout — qualquer coisa). Sem distinguir os dois
+      // casos, (b) fica sem saída: a solicitação está 'approved' pra sempre
+      // sem liberação nenhuma, e clicar em "Aprovar" de novo bate nesta
+      // mensagem para sempre, porque a condição `.eq('status', 'pending')`
+      // do UPDATE nunca mais casa.
+      //
+      // A tentação óbvia é inverter a ordem — conceder o acesso primeiro,
+      // marcar a decisão depois — e ELA FOI CONSIDERADA E DESCARTADA: isso
+      // reabriria a corrida que a UPDATE condicional acima fecha. Dois
+      // admins decidindo a MESMA solicitação ao mesmo tempo (um aprova, um
+      // nega) voltariam a poder produzir "negada com acesso concedido" — o
+      // próprio bug que motivou fazer a UPDATE ser a escrita que arbitra a
+      // corrida, não uma leitura prévia. A correção certa fica só na
+      // retentativa: busca o estado ATUAL da linha (pode ter mudado desde a
+      // leitura no topo desta função) e só segue adiante — para
+      // course_access, que já é idempotente por causa do tratamento de
+      // '23505' abaixo — se a linha já está 'approved' E a decisão pedida
+      // AGORA também é 'approved'. Qualquer outra combinação (já 'denied',
+      // ou pedindo 'denied' de novo) continua devolvendo o erro: nenhum
+      // caminho novo aqui permite que um "negar" conceda acesso.
+      const { data: atual, error: atualError } = await admin
+        .from('access_requests')
+        .select('status')
+        .eq('id', parsed.data.id)
+        .maybeSingle()
+      if (atualError) throw atualError
+
+      const retentativaDeAprovacaoJaMarcada = atual?.status === 'approved' && parsed.data.decisao === 'approved'
+      if (!retentativaDeAprovacaoJaMarcada) return { ok: false, error: 'Esta solicitação já foi decidida.' }
+      // Não retorna: cai no bloco abaixo, que concede o acesso (ou confirma
+      // que já estava concedido) e segue o fluxo normal até o fim.
     }
 
     if (parsed.data.decisao === 'approved') {
