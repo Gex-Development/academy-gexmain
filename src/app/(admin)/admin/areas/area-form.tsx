@@ -21,7 +21,19 @@ export function AreaForm() {
       <Field label="Cor" htmlFor="color" hint="Formato #RRGGBB">
         <Input id="color" name="color" placeholder="#2F6BFF" />
       </Field>
-      <CoverField name="coverUrl" largura={1600} altura={1000} />
+      {/*
+        key muda a cada criação bem-sucedida (o id da área recém-criada é
+        único por definição), o que força o React a REMONTAR o CoverField em
+        vez de reaproveitar a instância. Sem isto: CoverField guarda a URL
+        num useState interno (input controlado), e o reset automático que o
+        React 19 faz nos campos não controlados do formulário depois de uma
+        action bem-sucedida não alcança esse estado — a URL da capa
+        continuava na caixa, e a próxima área criada em seguida herdava a
+        capa da anterior em silêncio. Enquanto não há sucesso, a key fica
+        fixa em 'novo', então um erro de validação não apaga o que a pessoa
+        já tinha digitado.
+      */}
+      <CoverField key={state?.ok ? state.data.id : 'novo'} name="coverUrl" largura={1600} altura={1000} />
       <Field label="Posição" htmlFor="position" hint="Ordem na vitrine">
         <Input id="position" name="position" type="number" min={0} max={999} defaultValue={0} />
       </Field>
