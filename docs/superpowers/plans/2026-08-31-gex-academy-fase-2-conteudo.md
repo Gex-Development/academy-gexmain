@@ -1660,7 +1660,11 @@ export function LessonList({ courseId, lessons }: { courseId: string; lessons: L
             <form
               action={deleteAction}
               onSubmit={(e) => {
-                if (!confirm(`Excluir a aula "${lesson.title}"? Isso apaga anexos e dúvidas dela.`)) {
+                if (
+                  !confirm(
+                    `Excluir a aula "${lesson.title}"? Isso apaga os anexos, as dúvidas e o registro de conclusão de quem já assistiu.`,
+                  )
+                ) {
                   e.preventDefault()
                 }
               }}
