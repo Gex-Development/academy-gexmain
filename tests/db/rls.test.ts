@@ -1,3 +1,4 @@
+import { createClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
@@ -8,6 +9,7 @@ let areaTrafego: string
 let areaDesign: string
 
 let liderId: string
+let alunoTrafegoId: string
 let emailLiderTrafego: string
 let emailTrafego: string
 let emailDesigner: string
@@ -17,6 +19,17 @@ let emailAdminInativo: string
 let cursoTrafego: string
 let aulaTrafego: string
 let cursoRascunho: string
+
+// Curso/aula de outra área, inacessíveis ao aluno de Tráfego — alvo das
+// tentativas de "realocação" (mover pergunta/resposta para dentro de um
+// curso ao qual o autor não tem acesso).
+let cursoDesignAlheio: string
+let aulaDesignAlheio: string
+// Fixtures pré-semeadas via admin client (não provam nada de INSERT — isso já
+// é coberto nos testes do fórum) para os testes de UPDATE (realocação/
+// impersonation) mais abaixo.
+let perguntaTrafego: string
+let perguntaAlheia: string
 
 beforeAll(async () => {
   const stamp = Date.now()
@@ -49,14 +62,14 @@ beforeAll(async () => {
   })
   lixeira.usuario(liderId)
 
-  lixeira.usuario(
-    await createTestUser({
-      email: emailTrafego,
-      fullName: 'Aluno Tráfego',
-      role: 'member',
-      areaId: areaTrafego,
-    }),
-  )
+  alunoTrafegoId = await createTestUser({
+    email: emailTrafego,
+    fullName: 'Aluno Tráfego',
+    role: 'member',
+    areaId: areaTrafego,
+  })
+  lixeira.usuario(alunoTrafegoId)
+
   lixeira.usuario(
     await createTestUser({
       email: emailDesigner,
@@ -139,6 +152,54 @@ beforeAll(async () => {
   if (rascunhoError) throw rascunhoError
   cursoRascunho = rascunho!.id
   lixeira.curso(cursoRascunho)
+
+  // Curso/aula de Design, publicados mas fora do alcance do aluno de
+  // Tráfego — só servem de alvo para as tentativas de realocação abaixo.
+  const { data: cursoAlheio, error: cursoAlheioError } = await db
+    .from('courses')
+    .insert({
+      title: 'Curso Design Alheio',
+      slug: `curso-design-alheio-${stamp}`,
+      area_id: areaDesign,
+      owner_id: liderId,
+      status: 'published',
+    })
+    .select('id')
+    .single()
+  if (cursoAlheioError) throw cursoAlheioError
+  cursoDesignAlheio = cursoAlheio!.id
+  lixeira.curso(cursoDesignAlheio)
+
+  const { data: aulaAlheia, error: aulaAlheiaError } = await db
+    .from('lessons')
+    .insert({
+      course_id: cursoDesignAlheio,
+      title: 'Aula de Design',
+      slug: 'aula-design',
+      video_provider: 'youtube',
+      video_ref: 'dQw4w9WgXcQ',
+      status: 'published',
+    })
+    .select('id')
+    .single()
+  if (aulaAlheiaError) throw aulaAlheiaError
+  aulaDesignAlheio = aulaAlheia!.id
+
+  const { data: pergunta, error: perguntaError } = await db
+    .from('questions')
+    .insert({ lesson_id: aulaTrafego, author_id: alunoTrafegoId, body: 'Dúvida original sobre a aula.' })
+    .select('id')
+    .single()
+  if (perguntaError) throw perguntaError
+  perguntaTrafego = pergunta!.id
+
+  const { data: alheia, error: alheiaError } = await db
+    .from('questions')
+    .insert({ lesson_id: aulaDesignAlheio, author_id: liderId, body: 'Pergunta em curso alheio.' })
+    .select('id')
+    .single()
+  if (alheiaError) throw alheiaError
+  perguntaAlheia = alheia!.id
 })
 
 afterAll(() => lixeira.limpar())
@@ -174,8 +235,9 @@ describe('RLS — a vitrine mostra, o conteúdo não', () => {
 
   // A vitrine ainda precisa mostrar "N aulas" em curso bloqueado (spec §6). A
   // função contar_aulas_publicadas() resolve isso sem expor a linha: devolve
-  // só a contagem por curso, chamável por quem quer que seja — inclusive por
-  // quem, como o designer aqui, não enxerga uma linha sequer de `lessons`.
+  // só a contagem por curso, chamável por quem quer que seja autenticado e
+  // ativo — inclusive por quem, como o designer aqui, não enxerga uma linha
+  // sequer de `lessons`.
   it('mesmo sem acesso, designer lê a contagem de aulas publicadas via RPC — sem ver a linha', async () => {
     const cliente = await authClient(emailDesigner)
     const { data, error } = await cliente.rpc('contar_aulas_publicadas')
@@ -184,14 +246,28 @@ describe('RLS — a vitrine mostra, o conteúdo não', () => {
     expect(linhaDoCurso?.total).toBe(1)
   })
 
-  it('designer NÃO enxerga o fórum do curso de tráfego', async () => {
-    const cliente = await authClient(emailDesigner)
-    const { error } = await cliente.from('questions').insert({
+  // O código do erro prova que é RLS (42501 = insufficient_privilege), não
+  // qualquer outra falha (NOT NULL, coluna errada etc. também dariam
+  // `error !== null`). O controle ao lado — aluno da área inserindo na mesma
+  // aula — prova que perguntas_cria permite quem tem acesso; sem ele, este
+  // teste passaria igual se a política negasse todo mundo.
+  it('designer NÃO enxerga o fórum do curso de tráfego; aluno de tráfego consegue perguntar', async () => {
+    const comoDesigner = await authClient(emailDesigner)
+    const { error } = await comoDesigner.from('questions').insert({
       lesson_id: aulaTrafego,
-      author_id: (await cliente.auth.getUser()).data.user!.id,
+      author_id: (await comoDesigner.auth.getUser()).data.user!.id,
       body: 'Consigo perguntar aqui?',
     })
-    expect(error).not.toBeNull()
+    expect(error?.code).toBe('42501')
+
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data, error: erroAluno } = await comoAlunoTrafego
+      .from('questions')
+      .insert({ lesson_id: aulaTrafego, author_id: alunoTrafegoId, body: 'Outra dúvida sobre a aula.' })
+      .select('id')
+      .single()
+    expect(erroAluno).toBeNull()
+    expect(data?.id).toBeTruthy()
   })
 
   it('aluno de tráfego enxerga os anexos da própria área', async () => {
@@ -385,5 +461,279 @@ describe('RLS — auth_is_active() também corta a leitura da própria liberaç�
       .select('id')
       .eq('user_id', userId)
     expect(solicitacaoInativa).toEqual([])
+  })
+})
+
+// 0005_endurece_politicas.sql, achado 1 (revisão): courses_escrita é FOR ALL,
+// e para INSERT o Postgres só aplica WITH CHECK — que era uma terceira cópia
+// manual da regra de "quem gerencia" e nunca chamava auth_is_active(). Como
+// desativação não bloqueia o login (só o RLS corta o acesso), um líder
+// desativado ainda conseguia logar e fazer POST em /rest/v1/courses.
+describe('RLS — courses_escrita: WITH CHECK de INSERT também exige auth_is_active()', () => {
+  it('líder desativado não consegue criar curso; líder ativo consegue', async () => {
+    const stamp = Date.now()
+    const emailLiderAtivo = `lider-insere-ativo-${stamp}@gexcorp.com.br`
+    const emailLiderInativo = `lider-insere-inativo-${stamp}@gexcorp.com.br`
+
+    lixeira.usuario(
+      await createTestUser({
+        email: emailLiderAtivo,
+        fullName: 'Líder Insere Ativo',
+        role: 'leader',
+        areaId: areaTrafego,
+      }),
+    )
+    const liderInativoId = await createTestUser({
+      email: emailLiderInativo,
+      fullName: 'Líder Insere Inativo',
+      role: 'leader',
+      areaId: areaTrafego,
+      status: 'inactive',
+    })
+    lixeira.usuario(liderInativoId)
+
+    const comoInativo = await authClient(emailLiderInativo)
+    const slugFantasma = `curso-fantasma-${stamp}`
+    const { error: erroInativo } = await comoInativo.from('courses').insert({
+      title: 'Curso Fantasma',
+      slug: slugFantasma,
+      area_id: areaTrafego,
+      owner_id: liderInativoId,
+      status: 'draft',
+    })
+    expect(erroInativo?.code).toBe('42501')
+
+    // A linha não pode ter sido criada — nem que o erro tivesse vindo por
+    // outro motivo, uma tentativa de INSERT que falha não deixa rastro.
+    const { data: naoExiste } = await db.from('courses').select('id').eq('slug', slugFantasma)
+    expect(naoExiste).toEqual([])
+
+    // Sem .select() encadeado no insert de propósito: courses_leitura decide
+    // se a linha volta no RETURNING chamando can_manage_course(id), que
+    // reconsulta `courses` por id — dentro do MESMO comando de INSERT essa
+    // reconsulta não enxerga a própria linha ainda sendo inserida (efeito
+    // colateral do RETURNING, não uma falha de autorização: uma consulta
+    // SEPARADA logo depois, como a de baixo, encontra a linha normalmente).
+    // Isso é anterior a esta correção — já valia em 0003 — e não é o alvo
+    // deste achado; confirmar sucesso via reread evita depender dele.
+    const comoAtivo = await authClient(emailLiderAtivo)
+    const ativoId = (await comoAtivo.auth.getUser()).data.user!.id
+    const slugDeVerdade = `curso-de-verdade-${stamp}`
+    const { error: erroAtivo } = await comoAtivo.from('courses').insert({
+      title: 'Curso de Verdade',
+      slug: slugDeVerdade,
+      area_id: areaTrafego,
+      owner_id: ativoId,
+      status: 'draft',
+    })
+    expect(erroAtivo).toBeNull()
+
+    const { data: criado } = await db.from('courses').select('id').eq('slug', slugDeVerdade).single()
+    expect(criado?.id).toBeTruthy()
+    if (criado) lixeira.curso(criado.id)
+
+    // Controle extra: o próprio líder, numa consulta separada, também lê o
+    // curso que acabou de criar (prova que courses_leitura funciona para ele
+    // normalmente — o efeito do parágrafo acima é só dentro do mesmo INSERT).
+    const { data: viaLider } = await comoAtivo.from('courses').select('id').eq('slug', slugDeVerdade)
+    expect(viaLider).toHaveLength(1)
+  })
+})
+
+// 0005_endurece_politicas.sql, achado 2 (revisão): contar_aulas_publicadas()
+// filtrava a LINHA certo, mas não tinha gate de quem pode CHAMAR — o
+// Postgres concede EXECUTE a PUBLIC por padrão, e o Supabase concede a anon
+// também. Duas camadas de correção, dois testes: o revoke de EXECUTE barra a
+// chamada anônima antes de rodar; o "where auth_is_active()" dentro da
+// função zera o resultado de quem está autenticado mas desativado.
+describe('RLS — contar_aulas_publicadas(): EXECUTE revogado de anon/PUBLIC', () => {
+  it('cliente anônimo não consegue chamar a RPC de contagem', async () => {
+    const anon = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      { auth: { persistSession: false } },
+    )
+    const { data, error } = await anon.rpc('contar_aulas_publicadas')
+    expect(error?.code).toBe('42501')
+    expect(data).toBeNull()
+  })
+
+  it('pessoa autenticada mas desativada recebe contagem vazia, mesmo podendo chamar a RPC', async () => {
+    const cliente = await authClient(emailAdminInativo)
+    const { data, error } = await cliente.rpc('contar_aulas_publicadas')
+    expect(error).toBeNull()
+    expect(data).toEqual([])
+  })
+})
+
+// 0005_endurece_politicas.sql, achados 5 e 7 (revisão): perguntas_edita tinha
+// `with check (true)` — qualquer coluna nova passava, inclusive lesson_id e
+// author_id. respostas_edita travava author_id mas não question_id. A
+// correção fixa as duas chaves ao valor já gravado via subconsulta
+// autocorrelacionada (mesma técnica de profiles_ativa_a_si em 0001, agora
+// contra o próprio id da linha em vez de auth.uid()).
+describe('RLS — perguntas_edita/respostas_edita: WITH CHECK trava as chaves, não o corpo', () => {
+  it('aluno de tráfego NÃO move a própria pergunta para uma aula de outra área (relocation)', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { error } = await comoAlunoTrafego
+      .from('questions')
+      .update({ lesson_id: aulaDesignAlheio })
+      .eq('id', perguntaTrafego)
+    expect(error?.code).toBe('42501')
+
+    const { data } = await db.from('questions').select('lesson_id').eq('id', perguntaTrafego).single()
+    expect(data!.lesson_id).toBe(aulaTrafego)
+  })
+
+  it('aluno de tráfego NÃO atribui a própria pergunta a outra pessoa (impersonation)', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { error } = await comoAlunoTrafego
+      .from('questions')
+      .update({ author_id: liderId })
+      .eq('id', perguntaTrafego)
+    expect(error?.code).toBe('42501')
+
+    const { data } = await db.from('questions').select('author_id').eq('id', perguntaTrafego).single()
+    expect(data!.author_id).toBe(alunoTrafegoId)
+  })
+
+  // Controle: sem isto, os dois testes acima só provariam "todo UPDATE é
+  // barrado" — não que é especificamente lesson_id/author_id que ficaram
+  // travados. Editar o corpo, a coluna que deveria continuar livre, precisa
+  // continuar funcionando.
+  it('aluno de tráfego ainda edita o corpo da própria pergunta normalmente', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { error } = await comoAlunoTrafego
+      .from('questions')
+      .update({ body: 'Dúvida editada sobre a aula.' })
+      .eq('id', perguntaTrafego)
+    expect(error).toBeNull()
+
+    const { data } = await db.from('questions').select('body').eq('id', perguntaTrafego).single()
+    expect(data!.body).toBe('Dúvida editada sobre a aula.')
+  })
+
+  it('autor de uma resposta NÃO move a resposta para uma pergunta de curso inacessível (relocation)', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data: resposta, error: erroResposta } = await comoAlunoTrafego
+      .from('answers')
+      .insert({ question_id: perguntaTrafego, author_id: alunoTrafegoId, body: 'Resposta original.' })
+      .select('id')
+      .single()
+    expect(erroResposta).toBeNull()
+
+    const { error } = await comoAlunoTrafego
+      .from('answers')
+      .update({ question_id: perguntaAlheia })
+      .eq('id', resposta!.id)
+    expect(error?.code).toBe('42501')
+
+    const { data } = await db.from('answers').select('question_id').eq('id', resposta!.id).single()
+    expect(data!.question_id).toBe(perguntaTrafego)
+
+    // Controle: editar o corpo da própria resposta continua funcionando.
+    const { error: erroEdicaoValida } = await comoAlunoTrafego
+      .from('answers')
+      .update({ body: 'Resposta editada.' })
+      .eq('id', resposta!.id)
+    expect(erroEdicaoValida).toBeNull()
+  })
+})
+
+// 0005_endurece_politicas.sql, achado 6 (revisão): anexos_leitura checava só
+// can_access_course(course_id) — acesso de CURSO — sem filtrar por status da
+// AULA, ao contrário de lessons_leitura (0004). Um curso publicado pode ter
+// aulas ainda em rascunho; o anexo dessa aula (nome, caminho) vazava para
+// qualquer um da área, mesmo que o líder não tivesse publicado a aula ainda.
+describe('RLS — anexos_leitura: aula em rascunho não vaza nome de arquivo', () => {
+  it('aluno de tráfego não vê o anexo de uma aula em rascunho do próprio curso; líder vê', async () => {
+    const stamp = Date.now()
+    const { data: aulaRascunho, error } = await db
+      .from('lessons')
+      .insert({
+        course_id: cursoTrafego,
+        title: 'Aula ainda não publicada',
+        slug: `aula-rascunho-${stamp}`,
+        video_provider: 'youtube',
+        video_ref: 'dQw4w9WgXcQ',
+        status: 'draft',
+      })
+      .select('id')
+      .single()
+    expect(error).toBeNull()
+
+    const { error: anexoError } = await db.from('lesson_attachments').insert({
+      lesson_id: aulaRascunho!.id,
+      file_name: 'material-nao-publicado.pdf',
+      storage_path: `${aulaRascunho!.id}/material.pdf`,
+      mime_type: 'application/pdf',
+      size_bytes: 100,
+      uploaded_by: liderId,
+    })
+    expect(anexoError).toBeNull()
+
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data: viaAluno } = await comoAlunoTrafego
+      .from('lesson_attachments')
+      .select('id, file_name')
+      .eq('lesson_id', aulaRascunho!.id)
+    expect(viaAluno).toEqual([])
+
+    const comoLider = await authClient(emailLiderTrafego)
+    const { data: viaLider } = await comoLider
+      .from('lesson_attachments')
+      .select('id, file_name')
+      .eq('lesson_id', aulaRascunho!.id)
+    expect(viaLider).toHaveLength(1)
+  })
+})
+
+// 0005_endurece_politicas.sql, achado 3 (revisão): limpar() engolia o erro de
+// cada delete. O cenário concreto é o admin único depois de um db:reset sem
+// seed — aqui reproduzimos o mesmo tipo de falha (uma exclusão bloqueada por
+// FK) sem mexer no invariante de admin do projeto: área ainda referenciada
+// por um curso de propósito não registrado nesta lixeira de teste.
+describe('criarLixeira(): limpar() reporta falha em vez de engolir erro', () => {
+  it('lança erro agregado quando uma exclusão falha', async () => {
+    const stamp = Date.now()
+    const lixeiraDeTeste = criarLixeira()
+
+    const { data: area, error: areaError } = await db
+      .from('areas')
+      .insert({ name: 'Lixeira Presa', slug: `lixeira-presa-${stamp}` })
+      .select('id')
+      .single()
+    expect(areaError).toBeNull()
+    const areaId = area!.id
+    lixeiraDeTeste.area(areaId)
+
+    const donoId = await createTestUser({
+      email: `dono-lixeira-${stamp}@gexcorp.com.br`,
+      fullName: 'Dono Lixeira',
+      role: 'leader',
+      areaId,
+    })
+
+    // Curso NÃO registrado nesta lixeira de propósito: courses.area_id é ON
+    // DELETE RESTRICT, então apagar a área com o curso ainda vivo falha.
+    const { data: curso, error: cursoError } = await db
+      .from('courses')
+      .insert({
+        title: 'Curso Preso',
+        slug: `curso-preso-${stamp}`,
+        area_id: areaId,
+        owner_id: donoId,
+        status: 'draft',
+      })
+      .select('id')
+      .single()
+    expect(cursoError).toBeNull()
+
+    await expect(lixeiraDeTeste.limpar()).rejects.toThrow(/falha ao limpar/)
+
+    // Limpeza manual, na ordem certa, para não deixar rastro deste teste.
+    await db.from('courses').delete().eq('id', curso!.id)
+    await db.from('areas').delete().eq('id', areaId)
+    await db.auth.admin.deleteUser(donoId)
   })
 })

@@ -65,6 +65,13 @@ export async function authClient(email: string, password = SENHA_DE_TESTE) {
  * A ordem de remoção importa: cursos antes de áreas (`courses.area_id` é
  * ON DELETE RESTRICT) e usuários por último (apagar `auth.users` derruba o
  * perfil em cascata).
+ *
+ * limpar() captura o erro de cada exclusão e lança um erro agregado no final
+ * em vez de simplesmente ignorá-lo. Sem isso, uma suíte verde não prova que a
+ * limpeza aconteceu: rodando depois de um `db:reset` (sem seed.sql), o admin
+ * criado por rls.test.ts é o único admin ativo do banco — apagá-lo no fim
+ * dispara `profiles_exige_admin` (GX001), o delete falha, e o fixture
+ * sobrevive enquanto a suíte reporta sucesso.
  */
 export function criarLixeira() {
   const cursos: string[] = []
@@ -77,9 +84,24 @@ export function criarLixeira() {
     usuario: (id: string) => usuarios.push(id),
     async limpar() {
       const db = adminClient()
-      for (const id of cursos) await db.from('courses').delete().eq('id', id)
-      for (const id of areas) await db.from('areas').delete().eq('id', id)
-      for (const id of usuarios) await db.auth.admin.deleteUser(id)
+      const falhas: string[] = []
+
+      for (const id of cursos) {
+        const { error } = await db.from('courses').delete().eq('id', id)
+        if (error) falhas.push(`curso ${id}: ${error.message}`)
+      }
+      for (const id of areas) {
+        const { error } = await db.from('areas').delete().eq('id', id)
+        if (error) falhas.push(`área ${id}: ${error.message}`)
+      }
+      for (const id of usuarios) {
+        const { error } = await db.auth.admin.deleteUser(id)
+        if (error) falhas.push(`usuário ${id}: ${error.message}`)
+      }
+
+      if (falhas.length > 0) {
+        throw new Error(`criarLixeira: falha ao limpar ${falhas.length} fixture(s):\n${falhas.join('\n')}`)
+      }
     },
   }
 }
