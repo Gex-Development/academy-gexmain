@@ -347,9 +347,11 @@ async function moderar(
     supabase: Awaited<ReturnType<typeof createServerSupabase>>,
   ) => Promise<boolean>,
   exigeModeracao: boolean,
-  // Só as operações que mexem em resolved_at mudam o que a fila do líder
-  // mostra (/gerenciar/duvidas só lista perguntas com resolved_at nulo) —
-  // fixar/desafixar não altera isso, e a revalidação extra ali seria inerte.
+  // /gerenciar/duvidas lista perguntas com resolved_at nulo, então qualquer
+  // operação que resolve/reabre OU remove uma pergunta pendente muda o que a
+  // fila mostra — toggleResolved (óbvio) e deleteQuestion (apagar uma
+  // pergunta pendente tira a linha dali). Fixar/desafixar é a única exceção:
+  // PendingQuestion nem tem campo de pin, então a revalidação ali seria inerte.
   afetaFila: boolean,
 ): Promise<ActionResult<null>> {
   const id = z.string().uuid().safeParse(formData.get('questionId'))
@@ -448,7 +450,7 @@ export async function deleteQuestion(_prev: unknown, formData: FormData): Promis
         return (data?.length ?? 0) > 0
       },
       false,
-      false,
+      true,
     )
   } catch (error) {
     return toActionError(error)
@@ -488,6 +490,12 @@ export async function deleteAnswer(_prev: unknown, formData: FormData): Promise<
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
+    // Apagar a ÚLTIMA resposta de uma pergunta devolve ela de "respondida
+    // mas não resolvida" para "sem resposta" na fila — muda o balde em que
+    // aparece, o selo, e as duas contagens do cabeçalho. deleteAnswer não
+    // passa por moderar() (a permissão de apagar resposta não depende de
+    // "ser a pergunta"), então revalida aqui direto.
+    revalidatePath('/gerenciar/duvidas')
     return ok(null)
   } catch (error) {
     return toActionError(error)
