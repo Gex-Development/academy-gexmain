@@ -25,10 +25,19 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
 
   const emAndamento = selecionarEmAndamento(grupo.items)
 
+  // Terceiro degrau da reserva de capa — mesmo raciocínio de area-card.tsx:
+  // sem imagem e sem cor, bg-capa-fundo sozinho (#221f20 sobre #131213 no
+  // escuro) dá 1,14:1, quase invisível. from-azul/to-ciano são tokens fixos
+  // (não invertem por tema), então o gradiente fica igual nos dois temas,
+  // do mesmo jeito que capa-fundo.
+  const semReserva = !grupo.areaCoverUrl && !grupo.areaColor
+
   return (
     <div className="flex flex-col gap-8">
       <section
-        className="relative overflow-hidden rounded-card border border-borda bg-capa-fundo"
+        className={`relative overflow-hidden rounded-card border border-borda ${
+          semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
+        }`}
         style={grupo.areaColor && !grupo.areaCoverUrl ? { backgroundColor: grupo.areaColor } : undefined}
       >
         {grupo.areaCoverUrl && (

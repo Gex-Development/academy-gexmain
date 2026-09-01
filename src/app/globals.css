@@ -32,6 +32,13 @@
   --color-marca-700: #003b83;
 
   --color-ciano: #01cdff;
+  /* Par de --color-ciano: o azul da marca como cor FIXA, não o papel que
+     inverte (marca-600 é azul no claro, mas vira ciano no escuro). Existe
+     para o gradiente de reserva de capa (terceiro degrau, ver area-card.tsx
+     e area/[slug]/page.tsx) — que precisa ficar igual nos dois temas, do
+     mesmo jeito que --color-capa-fundo, então não pode usar um token que
+     troca de cor sozinho. */
+  --color-azul: #004eac;
 
   --color-superficie: #ffffff;
   --color-fundo: #f5f6f8;

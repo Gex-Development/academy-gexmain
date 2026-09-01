@@ -2,6 +2,16 @@ import Link from 'next/link'
 import type { AreaVitrine } from '@/server/vitrine-query'
 
 export function AreaCard({ area }: { area: AreaVitrine }) {
+  // Terceiro degrau da reserva de capa: sem coverUrl (degrau 1) e sem color
+  // (degrau 2), o retângulo caía no bg-capa-fundo chapado — #221f20 sobre o
+  // #131213 do fundo escuro dá 1,14:1, um retângulo quase invisível. É o
+  // estado real do banco hoje (a única área existe sem capa e sem cor), e
+  // publicar o primeiro curso não pode deixar a vitrine com essa cara de
+  // quebrada. from-azul/to-ciano são tokens FIXOS (não invertem por tema,
+  // ver globals.css), então o gradiente sai igual no claro e no escuro —
+  // do mesmo jeito que capa-fundo é igual nos dois.
+  const semReserva = !area.coverUrl && !area.color
+
   return (
     <li>
       <Link
@@ -9,7 +19,9 @@ export function AreaCard({ area }: { area: AreaVitrine }) {
         className="group block overflow-hidden rounded-card focus:outline-none focus:ring-2 focus:ring-acao"
       >
         <div
-          className="relative aspect-[16/10] w-full overflow-hidden rounded-card border border-borda bg-capa-fundo"
+          className={`relative aspect-[16/10] w-full overflow-hidden rounded-card border border-borda ${
+            semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
+          }`}
           style={area.color && !area.coverUrl ? { backgroundColor: area.color } : undefined}
         >
           {area.coverUrl && (
