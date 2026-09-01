@@ -236,14 +236,15 @@ Cursos em rascunho não aparecem na vitrine para ninguém além do dono e do adm
 - `/gerenciar/cursos/[id]/aulas/[id]` — editor da aula: título, descrição, campo de vídeo
   com preview, anexos e publicação.
 - `/gerenciar/duvidas` — fila de perguntas sem resposta nos cursos da sua área.
+- `/gerenciar/progresso` — painel de acompanhamento: progresso por pessoa e por curso,
+  com destaque para quem ainda não concluiu a trilha inicial. O líder vê a própria área;
+  o admin vê todas.
 
 ### Admin — `app/(admin)/`
 - `/admin/pessoas` — lista, convite (nome, e-mail, papel, área), troca de área e papel,
   desativação.
 - `/admin/areas` — criar e editar setores.
 - `/admin/solicitacoes` — fila do cadeado, com aprovar e negar.
-- `/admin/progresso` — progresso por pessoa e por curso, com destaque para quem ainda
-  não concluiu a trilha inicial.
 
 ## 7. Fluxos principais
 

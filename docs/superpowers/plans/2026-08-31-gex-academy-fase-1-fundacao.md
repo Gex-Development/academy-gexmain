@@ -10,6 +10,25 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-31-gex-academy-design.md`
 
+## Convenção de erros do banco
+
+Toda `raise exception` escrita por nós no schema **deve** carregar o SQLSTATE
+próprio do projeto:
+
+```sql
+raise exception 'Mensagem em português, escrita para quem usa a tela.'
+  using errcode = 'GX001';
+```
+
+`toActionError` repassa ao usuário **apenas** mensagens com o código `GX001`;
+qualquer outro erro vira a mensagem genérica. Sem isso o repasse teria de casar
+`P0001`, que é o código padrão de *toda* `raise exception` em PL/pgSQL — e a
+primeira trigger futura que interpolasse um nome de coluna ou o conteúdo de uma
+linha passaria a exibi-lo no navegador, em silêncio.
+
+Mensagens `GX001` são parte da interface: escreva-as para o colaborador, nunca
+com nome de tabela, de coluna ou valor de linha.
+
 ## Global Constraints
 
 Estas regras valem para **todas** as tarefas deste plano e dos planos das fases 2 e 3.
@@ -42,7 +61,7 @@ Estas regras valem para **todas** as tarefas deste plano e dos planos das fases 
 
 **Interfaces:**
 - Consumes: nada (primeira tarefa).
-- Produces: `formatDuration(seconds: number | null): string` em `src/lib/format.ts`. Scripts npm `test`, `test:db`, `test:e2e`, `db:start`, `db:reset`, `db:types`.
+- Produces: `formatDuration(seconds: number | null): string` em `src/lib/format.ts`. Scripts npm `test`, `test:db`, `test:e2e` e os de banco (a Task 2 os reaponta para o projeto Supabase remoto).
 
 - [ ] **Step 1: Criar o app Next.js na raiz do repositório**
 
@@ -289,14 +308,52 @@ git commit -m "chore: scaffold do Next 16 com Vitest, Playwright e helper de dur
 - Consumes: scripts npm da Task 1.
 - Produces: todas as tabelas do MVP; o tipo `Database` exportado de `src/lib/supabase/database.types.ts`; o helper de teste `adminClient()` em `tests/db/client.ts`.
 
-- [ ] **Step 1: Inicializar o Supabase local**
+- [ ] **Step 1: Inicializar o Supabase e ligar ao projeto de desenvolvimento**
 
-```bash
-npx supabase init
-npx supabase start
+Este projeto usa um **projeto Supabase de desenvolvimento na nuvem**, não o
+Supabase local — a máquina não tem Docker. Todos os comandos de banco falam com
+esse projeto remoto.
+
+O `.env.local` **já está preenchido e validado** contra o projeto de
+desenvolvimento (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`), e
+`npx supabase init` já foi executado — `supabase/config.toml` existe.
+
+Não use `supabase link`: ele exige um access token da plataforma, obtido por
+login interativo no navegador. Todos os comandos de banco usam `--db-url`, que
+autentica direto no Postgres com a senha do banco.
+
+Crie `scripts/db.mjs`, que monta a URL a partir do `.env.local` e repassa os
+argumentos para a Supabase CLI:
+
+```javascript
+#!/usr/bin/env node
+import { spawnSync } from 'node:child_process'
+
+// Node 20.12+ lê o arquivo de ambiente nativamente.
+process.loadEnvFile('.env.local')
+
+const ref = process.env.SUPABASE_PROJECT_REF
+const senha = process.env.SUPABASE_DB_PASSWORD
+
+if (!ref || !senha) {
+  console.error(
+    'Faltam SUPABASE_PROJECT_REF e/ou SUPABASE_DB_PASSWORD no .env.local.\n' +
+      'Eles estão no painel do Supabase, em Project Settings → Database.',
+  )
+  process.exit(1)
+}
+
+// encodeURIComponent é obrigatório: senhas do Supabase costumam ter !, * e @,
+// que quebram a connection string se entrarem cruas.
+const dbUrl = `postgresql://postgres:${encodeURIComponent(senha)}@db.${ref}.supabase.co:5432/postgres`
+
+const { status } = spawnSync('npx', ['supabase', ...process.argv.slice(2), '--db-url', dbUrl], {
+  stdio: 'inherit',
+})
+
+process.exit(status ?? 1)
 ```
-
-O comando `start` imprime a `API URL`, a chave pública (rotulada `anon key` ou `publishable key`, conforme a versão da CLI) e a `service_role key`. Copie `.env.local.example` para `.env.local` e preencha `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SERVICE_ROLE_KEY` com esses valores.
 
 - [ ] **Step 2: Escrever a migration com o schema completo**
 
@@ -541,16 +598,49 @@ create policy profiles_ativa_a_si on public.profiles
   with check (id = auth.uid() and status = 'active');
 ```
 
-- [ ] **Step 3: Aplicar a migration e gerar os tipos**
+- [ ] **Step 3: Apontar os scripts de banco para o projeto remoto**
+
+A Task 1 registrou os scripts assumindo Supabase local. Substitua-os em
+`package.json` pelas versões que falam com o projeto ligado:
+
+```json
+{
+  "db:push": "node scripts/db.mjs db push --yes",
+  "db:reset": "node scripts/db.mjs db reset --yes",
+  "db:types": "node scripts/db.mjs gen types typescript > src/lib/supabase/database.types.ts"
+}
+```
+
+Remova `db:start` e `db:stop` — não existe instância local para subir ou parar.
+
+Flags verificados nesta versão da CLI: `db push`, `db reset` e `gen types` todos
+aceitam `--db-url` (que exige a senha percent-encoded, e é o que `scripts/db.mjs`
+faz), e `--yes` dispensa a confirmação interativa. Se `gen types typescript` for
+recusado como subcomando, use `gen types --lang=typescript` — a CLI aceita as
+duas formas conforme a versão.
+
+⚠️ `db:reset` **apaga e recria o banco remoto a partir das migrations**. É o
+comportamento desejado neste projeto de desenvolvimento, e é o que dá testes
+repetíveis. Nunca aponte esse script para o projeto de produção.
+
+Confirme que `db:types` gerou TypeScript válido, sem log da CLI misturado:
+`head -5 src/lib/supabase/database.types.ts` deve começar com `export type Json =`,
+e `npm run typecheck` deve passar. Se houver log no arquivo, ajuste
+`scripts/db.mjs` para capturar o stdout do filho e escrever só ele.
+
+Ainda assim, escreva todo teste de integração para ser re-executável sem reset —
+todos geram slugs e e-mails únicos com `Date.now()`. Mantenha essa disciplina.
+
+- [ ] **Step 4: Aplicar a migration e gerar os tipos**
 
 ```bash
-npm run db:reset
+npm run db:push
 npm run db:types
 ```
 
-Expected: a migration aplica sem erro e `src/lib/supabase/database.types.ts` passa a existir com o tipo `Database`.
+Expected: `db push` aplica `0001_schema_inicial.sql` sem erro, e `src/lib/supabase/database.types.ts` passa a existir com o tipo `Database`.
 
-- [ ] **Step 4: Criar os utilitários de teste de banco**
+- [ ] **Step 5: Criar os utilitários de teste de banco**
 
 Crie `tests/db/setup.ts`:
 
@@ -563,7 +653,7 @@ const required = ['NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
 for (const key of required) {
   if (!process.env[key]) {
     throw new Error(
-      `${key} ausente. Rode "npm run db:start" e preencha o .env.local antes de "npm run test:db".`,
+      `${key} ausente. Preencha o .env.local com as credenciais do projeto Supabase de desenvolvimento antes de rodar "npm run test:db".`,
     )
   }
 }
@@ -614,7 +704,7 @@ export async function createTestUser(input: {
 }
 ```
 
-- [ ] **Step 5: Escrever os testes que falham para as restrições do schema**
+- [ ] **Step 6: Escrever os testes que falham para as restrições do schema**
 
 Crie `tests/db/schema.test.ts`:
 
@@ -734,12 +824,12 @@ describe('restrições do schema', () => {
 
 A prova de que o RLS está de fato barrando quem não tem sessão entra na Task 6, com um cliente anônimo. Aqui o foco são as restrições de integridade.
 
-- [ ] **Step 6: Rodar os testes de banco e confirmar que passam**
+- [ ] **Step 7: Rodar os testes de banco e confirmar que passam**
 
 Run: `npm run test:db`
-Expected: PASS — 5 testes. Se algum falhar por restrição ausente, corrija `0001_schema_inicial.sql`, rode `npm run db:reset` e repita.
+Expected: PASS — 5 testes. Se algum falhar por restrição ausente, corrija `0001_schema_inicial.sql` e rode `npm run db:reset` (que reaplica a migration corrigida do zero), depois repita.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -947,7 +1037,7 @@ describe('canAccessCourse — colaborador', () => {
 })
 ```
 
-O penúltimo e o último teste protegem contra o bug mais provável desta função: comparar `user.areaId === course.areaId` quando ambos são `null` e conceder acesso a quem não tem setor. A restrição do banco impede curso comum sem área, mas a função não pode depender disso.
+O **último** teste é o que protege contra o bug mais provável desta função: comparar `user.areaId === course.areaId` quando ambos são `null` e conceder acesso a quem não tem setor. Ele é o único que falharia se a guarda `!== null` fosse removida — o penúltimo (área nula contra curso com área) passa nas duas implementações, então não segure regressão nele. A restrição do banco impede curso comum sem área, mas a função não pode depender disso.
 
 - [ ] **Step 3: Rodar e confirmar que falha**
 
@@ -1025,7 +1115,7 @@ export type {
 - [ ] **Step 6: Rodar os testes e confirmar que passam**
 
 Run: `npm test -- src/lib/access`
-Expected: PASS — 22 testes.
+Expected: PASS — 23 testes.
 
 - [ ] **Step 7: Commit**
 
@@ -1044,7 +1134,9 @@ git commit -m "feat(access): regra de acesso a cursos como funcao pura testada"
 - Create: `src/lib/supabase/admin.ts`
 - Create: `src/lib/auth/session.ts`
 - Create: `src/lib/auth/guards.ts`
+- Create: `src/lib/auth/public-routes.ts`
 - Create: `src/proxy.ts`
+- Test: `src/lib/auth/public-routes.test.ts`
 - Create: `src/server/result.ts`
 - Test: `src/lib/auth/guards.test.ts`
 
@@ -1055,8 +1147,9 @@ git commit -m "feat(access): regra de acesso a cursos como funcao pura testada"
   - `createBrowserSupabase(): SupabaseClient<Database>` em `src/lib/supabase/client.ts`
   - `createAdminSupabase(): SupabaseClient<Database>` em `src/lib/supabase/admin.ts`
   - `type CurrentUser = AccessUser & { fullName: string; email: string; avatarUrl: string | null }`
-  - `getCurrentUser(): Promise<CurrentUser | null>` e `requireUser(): Promise<CurrentUser>` em `src/lib/auth/session.ts`
+  - `getCurrentUser(): Promise<CurrentUser | null>` em `src/lib/auth/session.ts`
   - `assertRole(user: CurrentUser | null, roles: Role[]): CurrentUser` em `src/lib/auth/guards.ts`
+  - `ehRotaPublica(pathname: string): boolean` em `src/lib/auth/public-routes.ts`
   - `type ActionResult<T>`, `ok()`, `fail()` em `src/server/result.ts`
 
 - [ ] **Step 1: Criar o cliente de servidor**
@@ -1303,15 +1396,40 @@ export function toActionError(error: unknown): ActionResult<never> {
 }
 ```
 
-- [ ] **Step 7: Criar o `proxy.ts` que renova a sessão e protege as rotas**
+- [ ] **Step 7: Criar o predicado de rota pública**
+
+Crie `src/lib/auth/public-routes.ts`:
+
+```typescript
+export const ROTAS_PUBLICAS = ['/login', '/convite', '/recuperar-senha', '/nova-senha', '/auth']
+
+/**
+ * Uma rota é pública quando é exatamente uma das listadas, ou um caminho abaixo
+ * dela.
+ *
+ * Comparar por prefixo solto (`pathname.startsWith(rota)`) tornaria `/authors`
+ * pública só porque começa com `/auth` — e a falha seria silenciosa, sem erro e
+ * sem teste vermelho. Por isso a fronteira `/` é obrigatória.
+ */
+export function ehRotaPublica(pathname: string): boolean {
+  return ROTAS_PUBLICAS.some((rota) => pathname === rota || pathname.startsWith(`${rota}/`))
+}
+```
+
+Escreva `src/lib/auth/public-routes.test.ts` cobrindo, no mínimo: cada rota
+listada casando exatamente; subcaminhos (`/auth/confirm`, `/convite/aceitar`)
+casando; e os quase-acertos **não** casando (`/authors`, `/login-history`,
+`/auth-log`, `/convites`), além de `/` e `/admin/pessoas`. Os quase-acertos são o
+motivo deste módulo existir.
+
+- [ ] **Step 8: Criar o `proxy.ts` que renova a sessão e protege as rotas**
 
 Crie `src/proxy.ts` (Next 16 — o nome `middleware.ts` está descontinuado):
 
 ```typescript
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-
-const ROTAS_PUBLICAS = ['/login', '/convite', '/recuperar-senha', '/nova-senha', '/auth']
+import { ehRotaPublica } from '@/lib/auth/public-routes'
 
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -1344,7 +1462,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const ehPublica = ROTAS_PUBLICAS.some((rota) => request.nextUrl.pathname.startsWith(rota))
+  const ehPublica = ehRotaPublica(request.nextUrl.pathname)
 
   if (!user && !ehPublica) {
     const url = request.nextUrl.clone()
@@ -1363,12 +1481,12 @@ export const config = {
 }
 ```
 
-- [ ] **Step 8: Rodar os testes e o typecheck**
+- [ ] **Step 9: Rodar os testes, o typecheck e o build**
 
-Run: `npm test && npm run typecheck`
-Expected: PASS — 5 testes de guards, nenhum erro de tipo.
+Run: `npm test && npm run typecheck && npm run build`
+Expected: PASS — testes de guards e de rota pública passando, nenhum erro de tipo, build concluído (o build é o que prova que o `proxy.ts` compila sob o Next 16).
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add -A
@@ -2042,7 +2160,21 @@ describe('tabela areas', () => {
 })
 ```
 
-O segundo teste é a prova de que o RLS está de fato barrando quem não tem sessão. Ele precisa que `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` esteja no `.env.local`.
+Estes dois testes são a primeira prova real de que o RLS funciona — todos os
+anteriores rodam como `service_role`, que ignora RLS por completo. Duas regras
+valem para **todo** teste de política daqui em diante:
+
+1. **Prove os dois lados.** Um teste que só afirma "o cliente anônimo não vê nada"
+   passa numa tabela vazia sem provar coisa alguma. Insira uma linha conhecida com
+   o cliente admin, confirme que o admin **vê** essa linha, e só então confirme que
+   o anônimo **não** vê. O contraste é a evidência.
+2. **Prove que a política discrimina por papel, não que "algo falhou".** Ao testar
+   escrita, inclua o caso de controle: o não-admin é recusado **e** o admin é
+   aceito. E, para `update`, verifique a linha armazenada pelo cliente admin — um
+   update filtrado por RLS reporta sucesso enquanto altera zero linhas.
+
+O helper `authClient(email, senha)` em `tests/db/client.ts` existe para isso.
+Ambos os testes precisam de `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` no `.env.local`.
 
 - [ ] **Step 8: Rodar tudo**
 
@@ -2579,6 +2711,14 @@ git commit -m "feat(admin): convite de pessoas com papel e area, com guardas con
   - `updateProfile(_prev, formData): Promise<ActionResult<null>>` em `src/server/account.ts` — nome e foto do próprio perfil.
   - Rota `GET /auth/confirm` que troca o token do e-mail por sessão.
   - Helper de teste `criarUsuarioDeTeste()` em `e2e/helpers.ts`.
+
+> **Cota de e-mail.** O convite usa o SMTP embutido do Supabase, que num projeto
+> de desenvolvimento envia poucos e-mails por hora. Rodar a suíte E2E repetidas
+> vezes na mesma hora esgota a cota e faz o teste de convite falhar por um motivo
+> que nada tem a ver com o código. Rode a suíte completa uma vez por sessão, ou
+> configure SMTP próprio (Resend) em *Authentication → SMTP Settings* — o mesmo
+> Resend que a fase 3 usa para os e-mails transacionais, o que remove o limite de
+> vez.
 
 - [ ] **Step 1: Criar a rota de confirmação de token**
 
@@ -3183,7 +3323,7 @@ export default function NotFound() {
 Aplique a migration:
 
 ```bash
-npm run db:reset
+npm run db:push
 ```
 
 - [ ] **Step 7: Escrever o teste E2E do primeiro acesso**
@@ -3375,6 +3515,22 @@ test('admin convida pessoa e ela aparece na lista como convite pendente', async 
   await page.getByLabel('Área').selectOption({ index: 1 })
   await page.getByRole('button', { name: 'Enviar convite' }).click()
 
+  // O convite passa pelo SMTP embutido do Supabase, limitado a poucos e-mails
+  // por hora num projeto de desenvolvimento. Quando a cota estoura, a action
+  // devolve a mensagem genérica de erro — e o teste falharia com um
+  // "elemento não encontrado" que não diz nada. Espere pelos dois resultados
+  // possíveis e transforme o erro num diagnóstico.
+  await expect(page.getByText('Convite enviado.').or(page.getByRole('alert'))).toBeVisible()
+
+  const alerta = page.getByRole('alert')
+  if (await alerta.count()) {
+    throw new Error(
+      `O convite falhou: "${await alerta.first().textContent()}". ` +
+        'Se for limite de e-mail do Supabase, espere uma hora ou configure SMTP ' +
+        'próprio em Authentication → SMTP Settings.',
+    )
+  }
+
   await expect(page.getByText('Convite enviado.')).toBeVisible()
   await expect(page.getByText(emailConvidado)).toBeVisible()
   await expect(page.getByText('Convite pendente')).toBeVisible()
@@ -3399,7 +3555,7 @@ npm run build
 npm run test:e2e
 ```
 
-Expected: PASS em todas as etapas. Os testes E2E precisam do Supabase local rodando (`npm run db:start`).
+Expected: PASS em todas as etapas. Os testes E2E falam com o projeto Supabase de desenvolvimento, então `.env.local` precisa estar preenchido.
 
 - [ ] **Step 9: Commit**
 

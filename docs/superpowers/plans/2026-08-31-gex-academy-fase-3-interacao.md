@@ -12,6 +12,31 @@
 
 **Pré-requisito:** Fases 1 e 2 concluídas.
 
+## Herança da fase 2 — leia antes de começar
+
+A fase 2 terminou com revisão de branch inteiro sem nenhum achado Critical. Três
+coisas que ela deixou registradas e que esta fase precisa respeitar:
+
+**1. `courses.owner_id` NÃO é um destinatário confiável.** A política de escrita
+fixa o dono num UPDATE comum, mas não no INSERT nem quando o UPDATE traz um `id`
+que ainda não existe. Um líder consegue, portanto, gravar qualquer perfil como
+dono de um curso da própria área. O fórum desta fase notifica **os líderes ativos
+da área do curso**, não o `owner_id` — a área é derivada do curso e não é forjável
+pelo mesmo caminho. Não volte a usar `owner_id` para decidir quem recebe e-mail.
+
+**2. O teste de paridade entre `canAccessCourse` e `can_access_course`
+(`tests/db/paridade-acesso.test.ts`) compara apenas o booleano "tem algum
+acesso".** Ele não fixa três coisas: a ordem "status antes de papel" (não há admin
+nem líder inativo na matriz), usuários com área nula, e a distinção entre `view` e
+`manage`. Essa última importa porque `getManagedCourse` agora é literalmente
+`canAccessCourse(...) === 'manage'` e nada compara isso com o `can_manage_course`
+do SQL. Se esta fase tocar em qualquer uma das duas cópias da regra, estenda a
+matriz antes.
+
+**3. Toda `SECURITY DEFINER` nova leva `revoke execute ... from public, anon`.**
+Isso apareceu três vezes na fase 2, sempre como achado. Trate como mecânico, não
+caso a caso.
+
 ## Global Constraints
 
 - Next.js **16**: middleware é `src/proxy.ts` exportando `proxy`.
@@ -313,16 +338,46 @@ export function CompleteButton({
 
 - [ ] **Step 7: Ligar o progresso às telas existentes**
 
-Em `src/server/catalog.ts`, acrescente o progresso ao tipo e à montagem:
+A fase 2 separou o catálogo em dois módulos: o tipo `CatalogItem`, o mapeador
+`paraCatalogItem` e o agrupador vivem em `src/server/catalog-query.ts` (sem
+`'use server'`, para serem testáveis), e `src/server/catalog.ts` só orquestra as
+consultas. O progresso entra nos dois.
+
+Em **`src/server/catalog-query.ts`**:
 
 ```typescript
-// no topo do arquivo
+// no topo
 import { buildProgress, type CourseProgress } from '@/lib/progress/percent'
 
 // no tipo CatalogItem, acrescente:
 //   progress: CourseProgress
 
-// dentro de getCatalog, some ao Promise.all existente:
+// paraCatalogItem ganha mais um parâmetro, seguindo o padrão de aulasPorCurso:
+export function paraCatalogItem(
+  row: LinhaCatalogo,
+  user: AccessUser,
+  aulasPorCurso: ReadonlyMap<string, number>,
+  concluidasPorCurso: ReadonlyMap<string, number>,
+  liberados: ReadonlySet<string>,
+  pendentes: ReadonlySet<string>,
+): CatalogItem {
+  // ... campos existentes ...
+  progress: buildProgress(
+    concluidasPorCurso.get(row.id) ?? 0,
+    aulasPorCurso.get(row.id) ?? 0,
+  ),
+}
+```
+
+O total vem de `aulasPorCurso`, que já é montado a partir da RPC
+`contar_aulas_publicadas`. **Não volte a contar linhas de `lessons`**: a fase 2
+fechou um vazamento removendo a política que permitia isso, e um join devolveria
+zero para todo curso bloqueado.
+
+Em **`src/server/catalog.ts`**, monte o mapa de concluídas junto das outras
+consultas e passe adiante:
+
+```typescript
 const { data: concluidas } = await supabase
   .from('lesson_progress')
   .select('lesson_id, lessons!inner(course_id)')
@@ -334,12 +389,13 @@ for (const linha of concluidas ?? []) {
   concluidasPorCurso.set(cursoId, (concluidasPorCurso.get(cursoId) ?? 0) + 1)
 }
 
-// e no map que monta cada CatalogItem, acrescente o campo:
-//   progress: buildProgress(
-//     concluidasPorCurso.get(row.id) ?? 0,
-//     row.lessons.filter((l) => l.status === 'published').length,
-//   ),
+// e na chamada existente:
+paraCatalogItem(row, user, aulasPorCurso, concluidasPorCurso, liberados, pendentes)
 ```
+
+Acrescente um teste em `src/server/catalog-query.test.ts` cobrindo: curso sem
+nenhuma aula concluída, curso parcialmente concluído, e curso bloqueado (onde o
+progresso deve ser zero de zero, porque a pessoa não tem o que concluir).
 
 Em `src/components/catalog/course-card.tsx`, acrescente a barra abaixo do parágrafo de metadados, visível só quando a pessoa tem acesso e o curso tem aulas:
 
@@ -1076,15 +1132,29 @@ export async function askQuestion(
       .single()
     if (error) throw error
 
-    // Avisa o dono do curso. Falha de e-mail não desfaz a pergunta.
+    // Avisa os LÍDERES DA ÁREA do curso — não o `owner_id`.
+    //
+    // A revisão da fase 2 mostrou que `owner_id` não é confiável como
+    // destinatário: a política de escrita não o fixa no INSERT nem quando o
+    // UPDATE traz um id novo, então um líder consegue gravar qualquer perfil
+    // como dono de um curso da própria área. Como este e-mail carrega o corpo
+    // da pergunta, os títulos e um link direto, mandá-lo para `owner_id`
+    // transformaria isso num canal de envio de conteúdo para quem não gerencia
+    // nada. A área do curso é derivada do próprio curso e não é forjável pelo
+    // mesmo caminho.
     const admin = createAdminSupabase()
-    const { data: dono } = await admin
+    const { data: lideres } = await admin
       .from('profiles')
       .select('email')
-      .eq('id', ctx.ownerId)
-      .maybeSingle()
+      .eq('role', 'leader')
+      .eq('status', 'active')
+      .eq('area_id', ctx.areaId)
 
-    if (dono?.email && ctx.ownerId !== ctx.user.id) {
+    const destinatarios = (lideres ?? [])
+      .map((l) => l.email)
+      .filter((email) => email !== ctx.user.email)
+
+    if (destinatarios.length > 0) {
       const conteudo = novaDuvidaEmail({
         alunoNome: ctx.user.fullName,
         aulaTitulo: ctx.lessonTitle,
@@ -1092,7 +1162,7 @@ export async function askQuestion(
         pergunta: parsed.data.body,
         url: `${process.env.NEXT_PUBLIC_SITE_URL}/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`,
       })
-      await sendEmail({ to: dono.email, ...conteudo })
+      await sendEmail({ to: destinatarios, ...conteudo })
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)
@@ -1574,7 +1644,23 @@ export async function listPendingQuestions(): Promise<PendingQuestion[]> {
 }
 ```
 
-- [ ] **Step 2: Criar a tela da fila**
+- [ ] **Step 2: Reativar a revalidação do cache nas ações do fórum**
+
+A Task 3 removeu `revalidatePath('/gerenciar/duvidas')` das ações de escrita do
+fórum, com razão: a rota não existia ainda e a chamada era inerte. **Agora ela
+existe** — é a página que você acabou de criar.
+
+Sem essa revalidação, o líder abre a fila e vê perguntas desatualizadas: uma
+dúvida recém-postada não aparece, e uma já resolvida continua listada, até que o
+cache expire por conta própria. A falha é silenciosa e parece "o sistema não
+avisou".
+
+Acrescente `revalidatePath('/gerenciar/duvidas')` em `src/server/forum.ts`, nas
+ações que mudam o que a fila mostra: criar pergunta, responder, e as de moderação
+que alteram `resolved_at`. Confirme abrindo a fila depois de postar uma dúvida em
+outra aba.
+
+- [ ] **Step 3: Criar a tela da fila**
 
 Crie `src/app/(manage)/gerenciar/duvidas/page.tsx`:
 
@@ -1635,12 +1721,12 @@ export default async function DuvidasPage() {
 }
 ```
 
-- [ ] **Step 3: Rodar tudo**
+- [ ] **Step 4: Rodar tudo**
 
 Run: `npm test && npm run typecheck && npm run build`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -2069,7 +2155,21 @@ git commit -m "feat(acesso): solicitacao pelo cadeado e fila de aprovacao do adm
 
 **Files:**
 - Create: `src/server/dashboard.ts`
-- Create: `src/app/(admin)/admin/progresso/page.tsx`
+- Create: `src/app/(manage)/gerenciar/progresso/page.tsx`
+- Modify: `src/components/layout/nav-links.tsx`
+- Modify: `src/components/layout/nav-links.test.tsx`
+
+> **Correção de rota (o plano trazia `/admin/progresso` e estava errado).** A spec
+> diz duas vezes que o painel é do admin **e do líder** (§Funcionalidades: "Painel
+> de acompanhamento para admin e líder"; tabela de papéis: o líder "vê o progresso
+> dos cursos da sua área"), e a política `progresso_gestao` da migration `0003` foi
+> escrita para isso — o comentário dela diz "líder e admin leem para o painel". Mas
+> a lista de rotas da spec pôs `/admin/progresso` na seção do Admin, e o layout
+> `src/app/(admin)/layout.tsx` redireciona quem não é admin. Sob `(admin)` o líder
+> nunca chegaria à página, e os dois ramos `atual.role === 'admin' || ... areaId`
+> do `dashboard.ts` seriam código morto. A rota passa a ser
+> `/gerenciar/progresso`, sob `(manage)`, cuja guarda é admin **ou** líder ativo. O
+> admin não perde nada: ele também entra em `/gerenciar/*`.
 
 **Interfaces:**
 - Consumes: `getCurrentUser`, `canAccessCourse`, `progressPercent`, `createAdminSupabase`.
@@ -2285,7 +2385,7 @@ export async function getDashboard(): Promise<{ pessoas: PersonProgress[]; curso
 
 - [ ] **Step 2: Criar a tela do painel**
 
-Crie `src/app/(admin)/admin/progresso/page.tsx`:
+Crie `src/app/(manage)/gerenciar/progresso/page.tsx`:
 
 ```typescript
 import { ProgressBar } from '@/components/progress/progress-bar'
@@ -2371,12 +2471,36 @@ export default async function ProgressoPage() {
 }
 ```
 
-- [ ] **Step 3: Rodar tudo**
+- [ ] **Step 3: Levar o link do painel para quem agora alcança a rota**
+
+`src/components/layout/nav-links.tsx` hoje lista `/admin/progresso` em `ADMIN`,
+que só o admin enxerga. Com a rota em `/gerenciar/progresso`, o link tem de sair
+de `ADMIN` e entrar em `GESTAO`, que é a lista mostrada a admin e a líder:
+
+```typescript
+const GESTAO: NavLink[] = [
+  { href: '/gerenciar', label: 'Gerenciar' },
+  { href: '/gerenciar/duvidas', label: 'Dúvidas' },
+  { href: '/gerenciar/progresso', label: 'Progresso' },
+]
+
+const ADMIN: NavLink[] = [
+  { href: '/admin/pessoas', label: 'Pessoas' },
+  { href: '/admin/areas', label: 'Áreas' },
+  { href: '/admin/solicitacoes', label: 'Solicitações' },
+]
+```
+
+`src/components/layout/nav-links.test.tsx` já cobre os três papéis; ajuste as
+expectativas e acrescente uma asserção de que o líder recebe
+`/gerenciar/progresso` — é a asserção que prova que a correção de rota pegou.
+
+- [ ] **Step 4: Rodar tudo**
 
 Run: `npm test && npm run typecheck && npm run build`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -2636,18 +2760,37 @@ test('colaborador pede acesso, admin aprova e o curso destrava', async ({ page }
 })
 ```
 
-- [ ] **Step 4: Rodar a suíte inteira**
+- [ ] **Step 4: Rodar a suíte**
+
+> **Dois comandos deste passo foram removidos, e não é preferência — é o banco
+> de produção.** Este projeto aponta para o Supabase real da GEX Academy, que já
+> tem a conta de admin do dono do produto e uma área de verdade.
+>
+> **`npm run db:reset` está PROIBIDO.** Ele apaga e recria o banco inteiro.
+> Existe uma trava em `scripts/db.mjs` que exige `-- --apagar <ref>` e barra a
+> chamada sem ela, mas não conte com a trava: não rode o comando. Para aplicar
+> migrations, `npm run db:push`, que é aditivo.
+>
+> **`npm run test:e2e` inteiro está PROIBIDO.** O spec `e2e/primeiro-acesso.spec.ts`
+> dispara um convite de e-mail real, e a cota de envio do projeto está esgotada —
+> a suíte falha por cota e ainda gasta o que sobrou. Rode specs por caminho.
 
 ```bash
-npm run db:reset
 npm test
 npm run test:db
 npm run typecheck
 npm run build
-npm run test:e2e
+npx playwright test e2e/forum-e-progresso.spec.ts
+npx playwright test e2e/solicitacao-de-acesso.spec.ts
+npx playwright test e2e/acesso-bloqueado.spec.ts
 ```
 
 Expected: PASS em todas as etapas.
+
+Se algum dos seus specs novos precisar de um usuário que ainda não existe, crie-o
+pelos helpers de teste, com `criarLixeira`, e **não** por convite de e-mail. Ao
+terminar, confirme com `node scripts/limpar-dados-de-teste.mjs` (que é dry-run por
+padrão) que não sobrou fixture.
 
 - [ ] **Step 5: Commit**
 
@@ -2719,21 +2862,25 @@ colaboradores; todo colaborador novo começa pela trilha inicial da empresa.
 
 ## Rodando localmente
 
-Pré-requisitos: Node 20+, Docker (para o Supabase local) e a Supabase CLI.
+Pré-requisitos: Node 20+ e a Supabase CLI. O desenvolvimento usa um projeto
+Supabase **de desenvolvimento na nuvem** — não há Supabase local.
 
 ```bash
 npm install
-npm run db:start          # sobe o Supabase local e imprime as chaves
+npx supabase link --project-ref <ref-do-projeto-de-desenvolvimento>
 cp .env.local.example .env.local
-# preencha .env.local com os valores impressos pelo db:start
-npm run db:reset          # aplica as migrations
+# preencha com Project URL, chave publicável e service_role (Project Settings → API)
+npm run db:push           # aplica as migrations no projeto ligado
 npm run db:types          # gera os tipos do banco
 npm run dev
 ```
 
-Crie o primeiro admin pelo Studio local (http://127.0.0.1:54323): adicione um
-usuário em Authentication e depois uma linha em `profiles` com `role = 'admin'`
-e `status = 'active'`.
+Crie o primeiro admin pelo painel do Supabase: adicione um usuário em
+Authentication e depois uma linha em `profiles` com `role = 'admin'` e
+`status = 'active'`.
+
+⚠️ `npm run db:reset` apaga e recria o banco **remoto** a partir das migrations.
+Use apenas contra o projeto de desenvolvimento, nunca contra produção.
 
 ## Comandos
 
@@ -2741,10 +2888,11 @@ e `status = 'active'`.
 |---|---|
 | `npm run dev` | Servidor de desenvolvimento |
 | `npm test` | Testes unitários (Vitest) |
-| `npm run test:db` | Testes de integração com o banco — exige o Supabase local |
+| `npm run test:db` | Testes de integração — falam com o projeto de desenvolvimento |
 | `npm run test:e2e` | Testes de ponta a ponta (Playwright) |
 | `npm run typecheck` | Verificação de tipos |
-| `npm run db:reset` | Recria o banco local aplicando todas as migrations |
+| `npm run db:push` | Aplica as migrations pendentes no projeto ligado |
+| `npm run db:reset` | Recria o banco de desenvolvimento do zero — **destrutivo** |
 | `npm run db:types` | Regenera `src/lib/supabase/database.types.ts` |
 
 ## Onde as coisas moram
