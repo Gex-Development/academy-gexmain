@@ -19,6 +19,32 @@ async function entrar(page: Page, email: string) {
 }
 
 /**
+ * Contraste WCAG entre duas cores no formato que getComputedStyle devolve
+ * ("rgb(r, g, b)" ou "rgba(r, g, b, a)") — luminância relativa e razão de
+ * contraste, fórmula da WCAG 2.x (mesma que a política de acessibilidade do
+ * projeto usa como critério: mínimo 4,5:1). Sem depender de biblioteca
+ * nenhuma: são poucas linhas, e o objetivo deste teste é justamente não
+ * confiar em leitura visual — foi assim que o Item 1 (botão primário a
+ * 1,88:1 no escuro) atravessou 268 testes unitários, 139 de banco, 4 specs
+ * de E2E e uma conferência visual à mão.
+ */
+function paraLinear(canal8bit: number): number {
+  const c = canal8bit / 255
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+}
+
+function luminanciaRelativa(corRgb: string): number {
+  const [r, g, b] = corRgb.match(/\d+(\.\d+)?/g)!.map(Number)
+  return 0.2126 * paraLinear(r) + 0.7152 * paraLinear(g) + 0.0722 * paraLinear(b)
+}
+
+function contraste(corA: string, corB: string): number {
+  const clara = Math.max(luminanciaRelativa(corA), luminanciaRelativa(corB))
+  const escura = Math.min(luminanciaRelativa(corA), luminanciaRelativa(corB))
+  return (clara + 0.05) / (escura + 0.05)
+}
+
+/**
  * Fixtures de banco criados por este teste, para apagar no fim. Mesma ordem
  * de e2e/acesso-bloqueado.spec.ts (criarFixtures/limpar): cursos antes de
  * áreas (`courses.area_id` é ON DELETE RESTRICT, e `courses.owner_id`
@@ -224,6 +250,59 @@ test('vitrine: home mostra as duas capas, área liberada abre o curso, área blo
     const cartaoCursoOutra = page.locator('li').filter({ hasText: tituloCursoOutra })
     await expect(cartaoCursoOutra.getByText(tituloCursoOutra)).toBeVisible()
     await expect(cartaoCursoOutra.getByText('Curso bloqueado')).toBeAttached()
+  } finally {
+    await limpar(fixtures)
+  }
+})
+
+test('tema: o botão primário passa 4,5:1 de contraste no escuro e no claro', async ({ page }) => {
+  const stamp = Date.now()
+  const fixtures = criarFixtures()
+
+  try {
+    // /perfil não exige curso, área nem enrollment — é a tela mais barata
+    // com um <Button> de variant padrão (o "Salvar" de profile-form.tsx) e
+    // com o ThemeToggle do topo (AppShell), os dois na mesma página.
+    const email = `contraste-botao-${stamp}@gexcorp.com.br`
+    const userId = await criarUsuarioDeTeste({
+      email,
+      senha: SENHA,
+      fullName: 'Contraste Botão',
+      role: 'member',
+    })
+    fixtures.usuarios.push(userId)
+
+    await entrar(page, email)
+    await page.goto('/perfil')
+
+    const botao = page.getByRole('button', { name: 'Salvar' })
+    await expect(botao).toBeVisible()
+
+    // Tema escuro é o padrão da plataforma — sem escolha em localStorage,
+    // é o que a pessoa vê ao entrar pela primeira vez.
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    const noEscuro = await botao.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return { cor: cs.color, fundo: cs.backgroundColor }
+    })
+    expect(
+      contraste(noEscuro.cor, noEscuro.fundo),
+      `escuro: ${noEscuro.cor} sobre ${noEscuro.fundo}`,
+    ).toBeGreaterThanOrEqual(4.5)
+
+    // Alterna pelo botão do topo (ThemeToggle), não manipulando localStorage
+    // ou a classe do <html> na mão — é o caminho real de quem usa o produto.
+    await page.getByRole('button', { name: 'Usar tema claro' }).click({ timeout: TIMEOUT_CLIQUE })
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+
+    const noClaro = await botao.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return { cor: cs.color, fundo: cs.backgroundColor }
+    })
+    expect(
+      contraste(noClaro.cor, noClaro.fundo),
+      `claro: ${noClaro.cor} sobre ${noClaro.fundo}`,
+    ).toBeGreaterThanOrEqual(4.5)
   } finally {
     await limpar(fixtures)
   }
