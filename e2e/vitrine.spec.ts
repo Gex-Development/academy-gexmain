@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { adminClient, criarAreaDeTeste, criarUsuarioDeTeste } from './helpers'
 
 const SENHA = 'senha-de-teste-123'
@@ -255,54 +255,75 @@ test('vitrine: home mostra as duas capas, área liberada abre o curso, área blo
   }
 })
 
-test('tema: o botão primário passa 4,5:1 de contraste no escuro e no claro', async ({ page }) => {
+/** Lê color/background-color computados de um locator e afirma >= 4,5:1, com a mensagem de erro carregando as duas cores lidas. */
+async function esperarContraste(locator: Locator, rotulo: string) {
+  const { cor, fundo } = await locator.evaluate((el) => {
+    const cs = getComputedStyle(el)
+    return { cor: cs.color, fundo: cs.backgroundColor }
+  })
+  expect(contraste(cor, fundo), `${rotulo}: ${cor} sobre ${fundo}`).toBeGreaterThanOrEqual(4.5)
+}
+
+test('tema: botões primário e de perigo passam 4,5:1 de contraste no escuro e no claro', async ({ page }) => {
   const stamp = Date.now()
   const fixtures = criarFixtures()
 
   try {
-    // /perfil não exige curso, área nem enrollment — é a tela mais barata
-    // com um <Button> de variant padrão (o "Salvar" de profile-form.tsx) e
-    // com o ThemeToggle do topo (AppShell), os dois na mesma página.
-    const email = `contraste-botao-${stamp}@gexcorp.com.br`
+    // Um admin cobre os dois botões sem precisar de um segundo usuário:
+    // /perfil tem o <Button> padrão (primário, "Salvar" de profile-form.tsx)
+    // e /admin/pessoas mostra a própria linha do admin logado com um botão
+    // de perigo ("Desativar" — variant="perigo" em person-row.tsx, ver
+    // linha 73). setPersonStatus recusa a autodesativação no SERVIDOR
+    // ("Você não pode desativar a si mesmo."), mas o botão aparece na tela
+    // igual a qualquer outro — não precisamos clicar nele, só ler a cor
+    // computada, então a recusa do servidor não entra em jogo aqui.
+    const fullName = `Contraste Botões ${stamp}`
+    const email = `contraste-botoes-${stamp}@gexcorp.com.br`
     const userId = await criarUsuarioDeTeste({
       email,
       senha: SENHA,
-      fullName: 'Contraste Botão',
-      role: 'member',
+      fullName,
+      role: 'admin',
     })
     fixtures.usuarios.push(userId)
 
     await entrar(page, email)
-    await page.goto('/perfil')
 
-    const botao = page.getByRole('button', { name: 'Salvar' })
-    await expect(botao).toBeVisible()
+    await page.goto('/perfil')
+    const primario = page.getByRole('button', { name: 'Salvar' })
+    await expect(primario).toBeVisible()
+
+    await page.goto('/admin/pessoas')
+    // A própria linha do admin, achada pelo fullName (único por causa do
+    // carimbo) — dentro dela, e só dentro dela, o botão "Desativar".
+    const perigo = page.locator('li').filter({ hasText: fullName }).getByRole('button', { name: 'Desativar' })
+    await expect(perigo).toBeVisible()
 
     // Tema escuro é o padrão da plataforma — sem escolha em localStorage,
     // é o que a pessoa vê ao entrar pela primeira vez.
     await expect(page.locator('html')).toHaveClass(/dark/)
-    const noEscuro = await botao.evaluate((el) => {
-      const cs = getComputedStyle(el)
-      return { cor: cs.color, fundo: cs.backgroundColor }
-    })
-    expect(
-      contraste(noEscuro.cor, noEscuro.fundo),
-      `escuro: ${noEscuro.cor} sobre ${noEscuro.fundo}`,
-    ).toBeGreaterThanOrEqual(4.5)
+    await esperarContraste(perigo, 'perigo escuro')
 
     // Alterna pelo botão do topo (ThemeToggle), não manipulando localStorage
     // ou a classe do <html> na mão — é o caminho real de quem usa o produto.
+    // O ThemeToggle está em AppShell, presente em /admin/pessoas também.
     await page.getByRole('button', { name: 'Usar tema claro' }).click({ timeout: TIMEOUT_CLIQUE })
     await expect(page.locator('html')).not.toHaveClass(/dark/)
+    await esperarContraste(perigo, 'perigo claro')
 
-    const noClaro = await botao.evaluate((el) => {
-      const cs = getComputedStyle(el)
-      return { cor: cs.color, fundo: cs.backgroundColor }
-    })
-    expect(
-      contraste(noClaro.cor, noClaro.fundo),
-      `claro: ${noClaro.cor} sobre ${noClaro.fundo}`,
-    ).toBeGreaterThanOrEqual(4.5)
+    // O locator `primario` continua válido depois da navegação — Playwright
+    // re-consulta o DOM atual a cada uso, não guarda uma referência presa à
+    // página antiga. Volta para /perfil só para o elemento existir de novo.
+    await page.goto('/perfil')
+    await expect(primario).toBeVisible()
+    await esperarContraste(primario, 'primário claro')
+
+    // E o escuro do primário: volta e alterna de novo, para não deixar essa
+    // combinação sem cobertura (o primário só tinha sido lido no claro até
+    // aqui, e o perigo só no escuro/claro de /admin/pessoas).
+    await page.getByRole('button', { name: 'Usar tema escuro' }).click({ timeout: TIMEOUT_CLIQUE })
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await esperarContraste(primario, 'primário escuro')
   } finally {
     await limpar(fixtures)
   }
