@@ -62,6 +62,24 @@ Preencha `.env.local` com os valores do painel do Supabase (Project Settings):
 > não destrói nada e não passa pela trava. Na prática, `db:reset` só se
 > justifica enquanto o banco tiver apenas dados de teste.
 
+## O primeiro administrador
+
+A plataforma é fechada por convite: toda pessoa entra porque um admin a
+convidou. Isso deixa um problema de partida — não existe quem convide o
+primeiro. Num banco recém-criado, ninguém consegue entrar.
+
+```bash
+node scripts/criar-admin.mjs "voce@empresa.com.br" "Seu Nome Completo"
+```
+
+O script cria o usuário no Auth e o perfil correspondente com `role = 'admin'` e
+`status = 'active'`, gera uma senha aleatória e a imprime **uma única vez**.
+Troque-a em `/perfil` depois de entrar.
+
+Ele usa a `service_role`, então roda apenas de onde o `.env.local` existe — nunca
+de dentro da aplicação. Depois do primeiro admin, todo mundo entra por convite
+pela tela de Pessoas.
+
 Note que `npm run db:types` **não** está listado como algo para rodar neste ambiente: ele exige um runtime de contêiner (Docker) indisponível aqui, e o arquivo `src/lib/supabase/database.types.ts` é mantido **à mão** — ver o comentário no topo desse arquivo.
 
 ## Configuração manual no painel do Supabase (obrigatória)
