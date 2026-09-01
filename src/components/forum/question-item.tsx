@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   answerQuestion,
@@ -35,14 +35,29 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
   // moderar() (src/server/forum.ts) confere as linhas afetadas justamente
   // porque uma recusa de RLS chega como zero linhas e não como erro — sem
   // mostrar esse `state` aqui, a tela não diria nada quando o banco recusa a
-  // ação: o botão volta ao normal, nada muda, ninguém sabe por quê. Uma
-  // única mensagem para as três ações de moderação (fixar/desafixar,
-  // resolver/reabrir, excluir pergunta): elas não rodam ao mesmo tempo, então
-  // não há ambiguidade sobre qual erro é de qual botão.
+  // ação: o botão volta ao normal, nada muda, ninguém sabe por quê.
+  //
+  // Uma única mensagem para as três ações de moderação (fixar/desafixar,
+  // resolver/reabrir, excluir pergunta) — mas não basta pegar o primeiro
+  // `state` verdadeiro entre os três: pin/resolve/deleteQuestion são três
+  // useActionState INDEPENDENTES, e o componente não é remontado na
+  // revalidação. Um "fixar" que falha seguido de um "resolver" que dá certo
+  // deixaria a mensagem do "fixar" na tela — os três nunca rodam ao MESMO
+  // TEMPO, mas o resultado de cada um PERSISTE até a próxima vez que aquele
+  // botão específico for clicado, não até a próxima ação de moderação
+  // qualquer. `ultimaAcaoModeracao`, atualizado no onSubmit de cada
+  // formulário, marca qual dos três estados é o que vale agora — os outros
+  // dois, mesmo com erro guardado, são ignorados.
+  const [ultimaAcaoModeracao, setUltimaAcaoModeracao] = useState<
+    'fixar' | 'resolver' | 'excluir-pergunta' | null
+  >(null)
   const erroModeracao =
-    (pinState && !pinState.ok && pinState.error) ||
-    (resolveState && !resolveState.ok && resolveState.error) ||
-    (deleteQuestionState && !deleteQuestionState.ok && deleteQuestionState.error) ||
+    (ultimaAcaoModeracao === 'fixar' && pinState && !pinState.ok && pinState.error) ||
+    (ultimaAcaoModeracao === 'resolver' && resolveState && !resolveState.ok && resolveState.error) ||
+    (ultimaAcaoModeracao === 'excluir-pergunta' &&
+      deleteQuestionState &&
+      !deleteQuestionState.ok &&
+      deleteQuestionState.error) ||
     undefined
 
   return (
@@ -63,13 +78,13 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
         <div className="flex shrink-0 gap-1">
           {question.canModerate && (
             <>
-              <form action={pinAction}>
+              <form action={pinAction} onSubmit={() => setUltimaAcaoModeracao('fixar')}>
                 <input type="hidden" name="questionId" value={question.id} />
                 <Button type="submit" variant="secundario" className="px-2 py-0.5 text-xs">
                   {question.isPinned ? 'Desafixar' : 'Fixar'}
                 </Button>
               </form>
-              <form action={resolveAction}>
+              <form action={resolveAction} onSubmit={() => setUltimaAcaoModeracao('resolver')}>
                 <input type="hidden" name="questionId" value={question.id} />
                 <Button type="submit" variant="secundario" className="px-2 py-0.5 text-xs">
                   {question.resolved ? 'Reabrir' : 'Resolver'}
@@ -81,7 +96,11 @@ export function QuestionItem({ question }: { question: ForumQuestion }) {
             <form
               action={deleteQuestionAction}
               onSubmit={(e) => {
-                if (!confirm('Excluir esta pergunta e as respostas dela?')) e.preventDefault()
+                if (!confirm('Excluir esta pergunta e as respostas dela?')) {
+                  e.preventDefault()
+                  return
+                }
+                setUltimaAcaoModeracao('excluir-pergunta')
               }}
             >
               <input type="hidden" name="questionId" value={question.id} />
