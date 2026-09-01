@@ -3,15 +3,14 @@ import { adminClient, criarAreaDeTeste, criarUsuarioDeTeste } from './helpers'
 
 const SENHA = 'senha-de-teste-123'
 
-// Timeout explícito nos três cliques deste arquivo (aqui e nos dois em
-// "colaborador da área..." abaixo): sem ele, a ação de clique não tem limite
-// próprio e só é interrompida pelo timeout global do teste (60s, ver
-// playwright.config.ts). Quando isso acontece, o `finally` que chama
-// limpar() não tem garantia de rodar até o fim antes do worker ser encerrado
-// — foi exatamente o que deixou fixtures presos no banco durante a checagem
-// de mutação documentada no relatório desta tarefa. Com um timeout de ação
-// bem abaixo do limite global, o mesmo clique falha como um erro comum de
-// asserção, com folga de sobra para o `finally` terminar.
+// Timeout explícito em todo clique deste arquivo: sem ele, a ação de clique
+// não tem limite próprio e só é interrompida pelo timeout global do teste
+// (60s, ver playwright.config.ts). Quando isso acontece, o `finally` que
+// chama limpar() não tem garantia de rodar até o fim antes do worker ser
+// encerrado — foi exatamente o que deixou fixtures presos no banco durante a
+// checagem de mutação documentada no relatório desta tarefa. Com um timeout
+// de ação bem abaixo do limite global, o mesmo clique falha como um erro
+// comum de asserção, com folga de sobra para o `finally` terminar.
 const TIMEOUT_CLIQUE = 15000
 
 async function entrar(page: Page, email: string) {
@@ -76,6 +75,15 @@ test('colaborador de outra área vê a capa, mas não alcança o conteúdo', asy
   try {
     const areaTrafego = await criarAreaDeTeste('Trafego')
     fixtures.areas.push(areaTrafego)
+    // A capa do curso não mora mais na home (Tasks 3-4 da fase 4 trocaram a
+    // home por uma vitrine de ÁREAS) — é preciso o slug da área para navegar
+    // até /area/<slug>, onde o card do curso está agora.
+    const { data: areaTrafegoRow, error: areaTrafegoError } = await db
+      .from('areas')
+      .select('slug')
+      .eq('id', areaTrafego)
+      .single()
+    if (areaTrafegoError || !areaTrafegoRow) throw areaTrafegoError ?? new Error('área não encontrada')
     const areaDesign = await criarAreaDeTeste('Designn')
     fixtures.areas.push(areaDesign)
 
@@ -131,6 +139,13 @@ test('colaborador de outra área vê a capa, mas não alcança o conteúdo', asy
 
     await entrar(page, emailDesigner)
 
+    // A home mostra a vitrine de ÁREAS: a capa de Trafego aparece bloqueada
+    // para quem é de Design (nenhum curso dela é acessível), e continua
+    // clicável — a pessoa entra, vê o que existe e pode pedir acesso. É
+    // dentro de /area/<slug> que o card do curso mora agora.
+    await page.locator(`a[href="/area/${areaTrafegoRow.slug}"]`).click({ timeout: TIMEOUT_CLIQUE })
+    await expect(page).toHaveURL(`/area/${areaTrafegoRow.slug}`)
+
     // A vitrine mostra a capa do curso de outra área inteira: título, cadeado
     // e contagem de aulas — só o conteúdo (lista de aulas) é que fica de fora.
     // O cadeado é um <span> "sr-only": está no DOM e tem texto, mas não ocupa
@@ -166,6 +181,14 @@ test('colaborador da área abre o curso e a aula normalmente', async ({ page }) 
   try {
     const areaCopy = await criarAreaDeTeste('Copyy')
     fixtures.areas.push(areaCopy)
+    // Mesmo motivo do teste acima: o slug é o que leva até /area/<slug>,
+    // onde o card do curso está agora.
+    const { data: areaCopyRow, error: areaCopyError } = await db
+      .from('areas')
+      .select('slug')
+      .eq('id', areaCopy)
+      .single()
+    if (areaCopyError || !areaCopyRow) throw areaCopyError ?? new Error('área não encontrada')
 
     const liderId = await criarUsuarioDeTeste({
       email: `lider-c-${stamp}@gexcorp.com.br`,
@@ -214,6 +237,11 @@ test('colaborador da área abre o curso e a aula normalmente', async ({ page }) 
     if (aulaError) throw aulaError
 
     await entrar(page, emailAluno)
+
+    // A home mostra a capa da PRÓPRIA área do redator, sem marca de bloqueio
+    // — é dentro de /area/<slug> que o card do curso mora agora.
+    await page.locator(`a[href="/area/${areaCopyRow.slug}"]`).click({ timeout: TIMEOUT_CLIQUE })
+    await expect(page).toHaveURL(`/area/${areaCopyRow.slug}`)
 
     // Controle do teste acima: mesmo formato de curso (própria área, mesma
     // contagem de uma aula publicada), mas desta vez a pessoa TEM acesso —

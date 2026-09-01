@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
+import { CoverField } from '@/components/ui/cover-field'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { setCourseStatus, updateCourse, type ManagedCourse } from '@/server/courses'
@@ -21,9 +22,7 @@ export function CourseSettings({ course }: { course: ManagedCourse }) {
         <Field label="Descrição" htmlFor="description">
           <Input id="description" name="description" defaultValue={course.description ?? ''} maxLength={600} />
         </Field>
-        <Field label="URL da capa" htmlFor="coverUrl">
-          <Input id="coverUrl" name="coverUrl" type="url" defaultValue={course.coverUrl ?? ''} />
-        </Field>
+        <CoverField name="coverUrl" largura={1280} altura={800} defaultValue={course.coverUrl ?? ''} />
         {saveState && !saveState.ok && (
           <p role="alert" className="text-xs text-perigo">
             {saveState.error}

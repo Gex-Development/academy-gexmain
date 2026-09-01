@@ -1,8 +1,9 @@
-import Link from 'next/link'
-import { CourseCard } from '@/components/catalog/course-card'
+import { AreaCard } from '@/components/catalog/area-card'
+import { HeroBanner } from '@/components/catalog/hero-banner'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getCatalog } from '@/server/catalog'
 import { getContinueWatching } from '@/server/progress'
+import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine } from '@/server/vitrine-query'
 
 export const metadata = { title: 'Início — GEX Academy' }
 
@@ -13,56 +14,80 @@ export default async function HomePage() {
     getContinueWatching(),
   ])
 
+  const areas = montarVitrine(catalog)
+  // escolherDestaque (vitrine-query.ts) é a autoridade nos três ramos —
+  // testada caso a caso, inclusive as bordas sem trilha no sistema e sem
+  // acesso a ela. O JSX abaixo pergunta a ELA (destaque.tipo), nunca decide
+  // de novo a partir de `continuar`: o `&& continuar` no ramo 'retomada' é
+  // só o estreitamento de tipo que o TypeScript exige, não uma segunda
+  // opinião — se uma regra nova entrar em escolherDestaque amanhã, é aqui
+  // que o efeito aparece. Sem trilha nem retomada, não se inventa destaque:
+  // banner falso é pior que ausência de banner, e fica o cabeçalho de
+  // saudação simples.
+  const destaque = escolherDestaque(catalog.onboarding, continuar !== null)
+
   return (
     <div className="flex flex-col gap-10">
-      <header>
-        <h1 className="text-xl font-semibold">Olá, {user!.fullName.split(' ')[0]}</h1>
-      </header>
-
-      {continuar && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
-            Continue de onde parou
-          </h2>
-          <Link
-            href={`/curso/${continuar.courseSlug}/aula/${continuar.lessonSlug}`}
-            className="block rounded-card border border-borda bg-superficie p-4 hover:bg-fundo"
-          >
-            <p className="text-sm font-medium">{continuar.lessonTitle}</p>
-            <p className="text-xs text-texto-suave">{continuar.courseTitle}</p>
-          </Link>
-        </section>
+      {destaque.tipo === 'trilha' ? (
+        <HeroBanner
+          rotulo="Comece por aqui"
+          titulo={destaque.item.title}
+          subtitulo={
+            destaque.item.description ??
+            `${destaque.item.lessonCount} ${destaque.item.lessonCount === 1 ? 'aula' : 'aulas'} sobre a empresa`
+          }
+          coverUrl={destaque.item.coverUrl}
+          color={destaque.item.areaColor}
+          // DESVIO DE SPEC, registrado (tabela §3 de
+          // docs/superpowers/specs/2026-09-01-gex-academy-vitrine-design.md):
+          // a §5.1.1 pede que o botão aponte para a PRÓXIMA AULA NÃO
+          // CONCLUÍDA, não para o índice do curso. Resolver isso direito
+          // exige uma consulta nova nesta página (lista de aulas do curso +
+          // progresso, algo como getCourseView(destaque.item.slug) — o
+          // catalog não carrega aula nenhuma, de propósito, ver o comentário
+          // em catalog.ts) — por isso ficou só registrado, não implementado,
+          // até essa consulta ser aprovada.
+          href={`/curso/${destaque.item.slug}`}
+          textoBotao={destaque.item.progress.completed > 0 ? 'Continuar' : 'Começar'}
+        />
+      ) : destaque.tipo === 'retomada' && continuar ? (
+        <HeroBanner
+          rotulo="Continue de onde parou"
+          titulo={continuar.lessonTitle}
+          subtitulo={continuar.courseTitle}
+          // A §5.1.2 da spec pede a capa do CURSO aqui. getContinueWatching
+          // não devolve capa (não é dela); o catalog já está inteiro em
+          // memória nesta mesma requisição, então capaDoCurso só procura o
+          // slug nele — zero consulta nova (ver o comentário em
+          // vitrine-query.ts). Como o banco real não tem trilha inicial
+          // hoje, este é o banner que a maioria das pessoas vai ver.
+          coverUrl={capaDoCurso(catalog, continuar.courseSlug)}
+          color={corDaAreaDoCurso(catalog, continuar.courseSlug)}
+          href={`/curso/${continuar.courseSlug}/aula/${continuar.lessonSlug}`}
+          textoBotao="Continuar"
+        />
+      ) : (
+        <header>
+          <h1 className="text-xl font-semibold">Olá, {user!.fullName.split(' ')[0]}</h1>
+        </header>
       )}
 
-      {catalog.onboarding && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
-            Comece por aqui
-          </h2>
+      <section>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-texto-suave">
+          Explore por área
+        </h2>
+        {areas.length === 0 ? (
+          <p className="text-sm text-texto-suave">
+            Nenhum curso publicado ainda. Assim que os líderes publicarem, as áreas aparecem aqui.
+          </p>
+        ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <CourseCard item={catalog.onboarding} />
-          </ul>
-        </section>
-      )}
-
-      {catalog.grupos.map((grupo) => (
-        <section key={grupo.groupKey}>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
-            {grupo.areaName}
-          </h2>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {grupo.items.map((item) => (
-              <CourseCard key={item.id} item={item} />
+            {areas.map((area) => (
+              <AreaCard key={area.key} area={area} />
             ))}
           </ul>
-        </section>
-      ))}
-
-      {!catalog.onboarding && catalog.grupos.length === 0 && (
-        <p className="text-sm text-texto-suave">
-          Nenhum curso publicado ainda. Assim que os líderes publicarem, eles aparecem aqui.
-        </p>
-      )}
+        )}
+      </section>
     </div>
   )
 }

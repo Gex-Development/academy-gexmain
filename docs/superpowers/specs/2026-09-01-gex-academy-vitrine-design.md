@@ -42,6 +42,12 @@ William, e quem ler isto depois precisa saber o que foi escolha e o que foi omis
 | Tema padrão | Escuro | Pedido original, e o que combina com a referência. |
 | Preferência de tema | No navegador | `localStorage`. Segue o dispositivo, não a pessoa. Virar coluna no perfil é fácil depois; construir agora seria adiantar trabalho sem demanda. |
 
+As três linhas abaixo não são decisão de produto — são desvio encontrado na revisão de branch da fase 4 (2026-09-01), registrado aqui em vez de corrigido às cegas, seguindo a mesma disciplina.
+
+| Cabeçalho de `/area/[slug]` | Mostra nome e contagem de cursos, não a descrição da área | A §6 pede "nome da área e descrição". `areas.description` nunca foi levado até `CatalogItem` — `SELECT_CATALOGO` (catalog-query.ts) não seleciona a coluna. Consequência real: o admin edita a descrição de uma área e nenhuma tela de aluno mostra o resultado. |
+| Ordem da fileira "Continue de onde parou" em `/area/[slug]` | Preserva a ordem que o catálogo já define (posição do curso), não a atividade mais recente | A §6 pede "ordenados pela atividade mais recente". `selecionarEmAndamento` (vitrine-query.ts) só filtra, de propósito — há teste ("preserva a ordem de entrada — é filtro, não reordenação") travando esse comportamento. Ordenar por atividade exigiria trazer `completed_at` por curso, hoje fora do catálogo. |
+| Destino do botão do banner "Comece por aqui" (trilha inicial) | Aponta para `/curso/[slug]` (o índice do curso), não para a próxima aula não concluída | A §5.1.1 pede a próxima aula não concluída. `CatalogItem` carrega só a CONTAGEM de aulas (progress.completed/total), não a lista nem quais estão concluídas — por decisão de catalog.ts ("nada aqui toca aula"). Resolver certo exige uma consulta nova nesta página (ex.: `getCourseView` do curso da trilha). Fica pendente de aprovação do controlador antes de abrir essa consulta, não implementado nem contornado. |
+
 ## 4. Rotas
 
 ```
