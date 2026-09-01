@@ -305,3 +305,99 @@ describe('contagem de concluídas quando uma aula concluída é despublicada dep
     expect(linhaAindaExiste).toHaveLength(1)
   })
 })
+
+describe('progresso_proprio — WITH CHECK exige aula publicada, salvo para quem gerencia (0010)', () => {
+  it('membro com acesso ao curso NÃO marca como concluída uma aula em rascunho', async () => {
+    const stamp = Date.now()
+
+    const { data: curso, error: cursoError } = await db
+      .from('courses')
+      .insert({
+        title: 'Curso Progresso Rascunho',
+        slug: `curso-progresso-rascunho-${stamp}`,
+        area_id: areaId,
+        owner_id: liderId,
+        status: 'published',
+      })
+      .select('id')
+      .single()
+    if (cursoError) throw cursoError
+    lixeira.curso(curso!.id)
+
+    const { data: lesson, error: lessonError } = await db
+      .from('lessons')
+      .insert({
+        course_id: curso!.id,
+        title: 'Aula Rascunho Progresso',
+        slug: 'aula-rascunho-progresso',
+        video_provider: 'youtube',
+        video_ref: 'dQw4w9WgXcQ',
+        status: 'draft',
+      })
+      .select('id')
+      .single()
+    if (lessonError) throw lessonError
+
+    // membroId é da MESMA área do curso: acesso via regra de área, sem
+    // precisar de course_access avulso — mas a aula está em rascunho.
+    const cliente = await authClient(emailMembro)
+    const { error } = await cliente
+      .from('lesson_progress')
+      .insert({ user_id: membroId, lesson_id: lesson!.id })
+
+    // Recusa de RLS num INSERT é erro DURO do Postgres (42501), diferente
+    // de um UPDATE/DELETE, que devolveria sucesso com `data` vazio.
+    expect(error).not.toBeNull()
+    expect(error?.code).toBe('42501')
+
+    const { data: linhaNaoExiste } = await db
+      .from('lesson_progress')
+      .select('lesson_id')
+      .eq('user_id', membroId)
+      .eq('lesson_id', lesson!.id)
+    expect(linhaNaoExiste).toHaveLength(0)
+  })
+
+  it('o gestor do curso CONSEGUE marcar a própria aula em rascunho como concluída — é como ele testa antes de publicar', async () => {
+    const stamp = Date.now()
+
+    const { data: curso, error: cursoError } = await db
+      .from('courses')
+      .insert({
+        title: 'Curso Progresso Rascunho Gestor',
+        slug: `curso-progresso-rascunho-gestor-${stamp}`,
+        area_id: areaId,
+        owner_id: liderId,
+        status: 'published',
+      })
+      .select('id')
+      .single()
+    if (cursoError) throw cursoError
+    lixeira.curso(curso!.id)
+
+    const { data: lesson, error: lessonError } = await db
+      .from('lessons')
+      .insert({
+        course_id: curso!.id,
+        title: 'Aula Rascunho Progresso Gestor',
+        slug: 'aula-rascunho-progresso-gestor',
+        video_provider: 'youtube',
+        video_ref: 'dQw4w9WgXcQ',
+        status: 'draft',
+      })
+      .select('id')
+      .single()
+    if (lessonError) throw lessonError
+
+    // liderId gerencia este curso (mesma área) — can_manage_course cobre a
+    // aula em rascunho, mesmo caminho que courses_escrita/lessons já usam.
+    const cliente = await authClient(emailLider)
+    const { data, error } = await cliente
+      .from('lesson_progress')
+      .insert({ user_id: liderId, lesson_id: lesson!.id })
+      .select('lesson_id')
+
+    expect(error).toBeNull()
+    expect(data).toHaveLength(1)
+  })
+})
