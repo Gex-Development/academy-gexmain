@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
+import { slugify } from '../src/lib/slug'
 
 // quiet: true só cala a dica informativa de sempre ("injected env (N) from
 // .env.local // tip: ..."), suportada desde dotenv 17.0.0 (instalado: ver
@@ -60,9 +61,13 @@ export async function criarUsuarioDeTeste(input: {
 
 export async function criarAreaDeTeste(nome: string) {
   const db = adminClient()
+  // slugify (não nome.toLowerCase()), do mesmo jeito que createArea faz de
+  // verdade (src/server/areas.ts): um nome com espaço ou acento vira slug
+  // com espaço/acento sem isso, e a URL de /area/[slug] quebra — foi
+  // exatamente isso que custou um 404 nesta fase (ver e2e/vitrine.spec.ts).
   const { data, error } = await db
     .from('areas')
-    .insert({ name: nome, slug: `${nome.toLowerCase()}-${Date.now()}` })
+    .insert({ name: nome, slug: `${slugify(nome)}-${Date.now()}` })
     .select('id')
     .single()
   if (error) throw error

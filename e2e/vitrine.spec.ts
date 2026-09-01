@@ -69,12 +69,13 @@ test('vitrine: home mostra as duas capas, área liberada abre o curso, área blo
     // Duas áreas: a primeira ganha cover_url (criarAreaDeTeste não aceita o
     // campo — é escrito à parte, direto no banco, como updateArea faria), a
     // segunda fica sem capa, para exercitar o retângulo de cor sólida.
-    // Nome sem espaço de propósito: criarAreaDeTeste faz
-    // `${nome.toLowerCase()}-${Date.now()}` sem slugificar, então um nome com
-    // espaço vira um slug com espaço, que quebra o casamento de rota de
-    // /area/[slug] (visto na prática: primeira execução deste spec com
-    // "Vitrine Minha" caiu em 404). Toda área de teste existente na suíte
-    // (Trafego, Designn, Copyy) já segue essa mesma convenção de nome único.
+    // Nome sem espaço de propósito, mesmo depois de criarAreaDeTeste passar a
+    // slugificar (e2e/helpers.ts): a primeira execução deste spec, quando
+    // ainda montava o slug com `${nome.toLowerCase()}-${Date.now()}` sem
+    // slugificar, caiu em 404 com "Vitrine Minha" (nome com espaço vira slug
+    // com espaço, que quebra o casamento de rota de /area/[slug]). Toda área
+    // de teste existente na suíte (Trafego, Designn, Copyy) já segue essa
+    // mesma convenção de nome único sem espaço.
     const nomeAreaMinha = `VitrineMinha${stamp}`
     const areaMinhaId = await criarAreaDeTeste(nomeAreaMinha)
     fixtures.areas.push(areaMinhaId)
