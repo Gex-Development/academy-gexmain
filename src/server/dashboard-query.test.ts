@@ -205,19 +205,26 @@ describe('montarPainel — curso sem aula publicada', () => {
 })
 
 describe('montarPainel — status vem da linha, não cravado (Correção 2)', () => {
-  it('pessoa com status diferente de active fica com zero aulas disponíveis, mesmo tendo um curso "próprio" da área — e sai da lista (Item 11)', () => {
+  it('pessoa com status diferente de active fica com zero aulas disponíveis, mesmo tendo um curso "próprio" da área', () => {
     // getDashboard filtra `.eq('status', 'active')` na consulta real, mas a
     // função pura não deve depender disso: se `status` fosse cravado como
     // 'active' aqui dentro, canAccessCourse devolveria 'view' para o curso
-    // da própria área (member, mesma área) e a pessoa apareceria na lista
-    // com aulas disponíveis — em vez de ficar de fora por ter zero.
+    // da própria área (member, mesma área) e `disponiveis` sairia > 0.
+    //
+    // montarPainel devolve a pessoa MESMO com disponiveis: 0 (round 2 da
+    // revisão: filtrar aqui dentro sumiria com ela também de
+    // onboardingPendente, na página — ver o comentário de montarPainel, em
+    // dashboard-query.ts). Quem filtra por disponiveis é a seção "Por
+    // pessoa" da própria página, não esta função.
     const atual = { role: 'admin', areaId: null }
     const perfis = [perfil({ id: 'p1', area_id: AREA_TRAFEGO, status: 'inactive' })]
     const cursoProprio = curso({ id: 'c1', area_id: AREA_TRAFEGO })
 
     const { pessoas } = montarPainel(atual, perfis, [cursoProprio], [], [])
 
-    expect(pessoas).toEqual([])
+    expect(pessoas).toHaveLength(1)
+    expect(pessoas[0].disponiveis).toBe(0)
+    expect(pessoas[0].concluidas).toBe(0)
   })
 })
 
@@ -230,8 +237,10 @@ describe('montarPainel — Item 11: "disponíveis" só conta curso acessado COMO
     const { pessoas } = montarPainel(atual, perfis, [cursoGerenciado], [], [])
 
     // Zero aulas disponíveis (o único curso que ele toca, ele gerencia) —
-    // não há nada a relatar sobre esta pessoa, então ela sai da lista.
-    expect(pessoas).toEqual([])
+    // mas a pessoa continua em `pessoas`: quem decide se ela some da lista
+    // "Por pessoa" é a página, não montarPainel (round 2 da revisão).
+    expect(pessoas).toHaveLength(1)
+    expect(pessoas[0].disponiveis).toBe(0)
   })
 
   it('líder continua na lista pela trilha inicial e por um curso de OUTRA área que ele só acessa (nunca gerencia nenhum dos dois)', () => {
@@ -261,7 +270,7 @@ describe('montarPainel — Item 11: "disponíveis" só conta curso acessado COMO
     expect(pessoas[0].disponiveis).toBe(2)
   })
 
-  it('admin não aparece na lista "Por pessoa": gerencia todo curso publicado (e até rascunho), nunca tem aula "view"', () => {
+  it('admin sempre fica com disponiveis: 0 — gerencia todo curso publicado (e até rascunho), nunca tem aula "view"', () => {
     const atual = { role: 'admin', areaId: null }
     const perfis = [perfil({ id: 'admin-1', full_name: 'Admin', role: 'admin', area_id: null, areas: null })]
     const cursos = [
@@ -271,6 +280,39 @@ describe('montarPainel — Item 11: "disponíveis" só conta curso acessado COMO
 
     const { pessoas } = montarPainel(atual, perfis, cursos, [], [])
 
-    expect(pessoas).toEqual([])
+    // montarPainel NÃO tira o admin de `pessoas` (round 2 da revisão: a
+    // página /gerenciar/progresso usa este mesmo array para
+    // "Trilha inicial pendente", e um admin com disponiveis: 0 ainda pode
+    // ter onboardingConcluido: false — sumir daqui apagaria essa
+    // informação de lá também). É a seção "Por pessoa" da página que filtra
+    // `disponiveis > 0`, não esta função.
+    expect(pessoas).toHaveLength(1)
+    expect(pessoas[0].disponiveis).toBe(0)
+  })
+
+  it('regressão da rodada 2: admin que NÃO concluiu a trilha inicial continua em `pessoas`, com onboardingConcluido: false — mesmo tendo disponiveis: 0', () => {
+    // Antes da correção de round 2, montarPainel filtrava `disponiveis > 0`
+    // na própria função — um admin (disponiveis sempre 0) sumia de
+    // `pessoas` inteiro, e a página derivava "Trilha inicial pendente"
+    // desse mesmo array: o admin que não tinha concluído a trilha
+    // desaparecia da seção que existe para apontar isso, e a tela chegava a
+    // imprimir "Todo mundo concluiu a trilha inicial." mesmo com um admin
+    // pendente — a mesma garantia confiante e errada que o item 5 existe
+    // para eliminar, produzida pelo item 11 na mesma rodada.
+    const atual = { role: 'admin', areaId: null }
+    const perfis = [perfil({ id: 'admin-1', full_name: 'Admin', role: 'admin', area_id: null, areas: null })]
+    const trilha = curso({
+      id: 'onboarding',
+      title: 'Trilha inicial',
+      area_id: null,
+      is_onboarding: true,
+      lessons: [{ id: 'o1', status: 'published' }],
+    })
+
+    const { pessoas } = montarPainel(atual, perfis, [trilha], [], [])
+
+    expect(pessoas).toHaveLength(1)
+    expect(pessoas[0].disponiveis).toBe(0)
+    expect(pessoas[0].onboardingConcluido).toBe(false)
   })
 })

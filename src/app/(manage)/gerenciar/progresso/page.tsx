@@ -6,6 +6,14 @@ export const metadata = { title: 'Progresso — GEX Academy' }
 export default async function ProgressoPage() {
   const { pessoas, cursos } = await getDashboard()
   const onboardingPendente = pessoas.filter((p) => !p.onboardingConcluido)
+  // Zero aulas disponíveis (todo curso que a pessoa toca, ela só gerencia —
+  // o caso de todo admin, e de um líder que só gerencia a própria área sem
+  // acessar mais nada como aluno): não há nada a relatar sobre essa pessoa
+  // NESTA seção, então ela fica de fora aqui — mas não em `pessoas` nem em
+  // `onboardingPendente` acima, que precisam ver todo mundo (ver o
+  // comentário de montarPainel, em dashboard-query.ts, sobre por que esse
+  // filtro não pode morar na função pura).
+  const pessoasComAulas = pessoas.filter((p) => p.disponiveis > 0)
 
   return (
     <div className="flex flex-col gap-10">
@@ -41,7 +49,7 @@ export default async function ProgressoPage() {
           Por pessoa
         </h2>
         <ul className="divide-y divide-borda rounded-card border border-borda bg-superficie">
-          {pessoas.map((pessoa) => (
+          {pessoasComAulas.map((pessoa) => (
             <li key={pessoa.userId} className="px-4 py-3">
               <p className="text-sm font-medium">
                 {pessoa.name}
