@@ -176,7 +176,6 @@ describe('RLS: corte imediato de pessoa inativa (auth_is_active)', () => {
 
 describe('capa da área', () => {
   it('admin grava e lê a capa; a coluna aceita nulo', async () => {
-    const lixeira = criarLixeira()
     const nome = `Área Capa ${Date.now()}`
 
     const { data: criada, error } = await db
@@ -185,9 +184,13 @@ describe('capa da área', () => {
       .select('id, cover_url')
       .single()
 
+    // Registra o id na lixeira de escopo de módulo ANTES de qualquer asserção:
+    // se `expect` abaixo lançar, a linha ainda assim fica marcada para o
+    // afterAll do arquivo limpar (ver tests/db/client.ts sobre por que isto
+    // importa contra o banco de produção).
+    lixeira.area(criada!.id)
     expect(error).toBeNull()
     expect(criada?.cover_url).toBe('https://exemplo.test/capa.png')
-    lixeira.area(criada!.id)
 
     const { data: limpa } = await db
       .from('areas')
@@ -197,6 +200,5 @@ describe('capa da área', () => {
       .single()
 
     expect(limpa?.cover_url).toBeNull()
-    await lixeira.limpar()
   })
 })

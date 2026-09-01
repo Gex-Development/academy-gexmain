@@ -14,29 +14,39 @@ import { Input } from './input'
  * real, para o problema aparecer aqui e não depois.
  */
 export function CoverField({
+  id,
   name,
   largura,
   altura,
   defaultValue,
   label = 'URL da capa',
 }: {
+  id?: string
   name: string
   largura: number
   altura: number
   defaultValue?: string
   label?: string
 }) {
+  // Sem `id`, cai no `name`. Correto quando só existe uma instância na
+  // página (ex.: area-form.tsx), mas quebra quando o mesmo `name` aparece
+  // em mais de um formulário montado ao mesmo tempo — o formulário "Nova
+  // área", sempre presente no aside, e o de edição de cada AreaRow, que
+  // abre por cima da listagem. Quem monta várias instâncias (area-row.tsx)
+  // deve passar um `id` namespaced, do mesmo jeito que já faz para os
+  // outros campos do formulário de edição.
+  const fieldId = id ?? name
   const [url, setUrl] = useState(defaultValue ?? '')
 
   return (
     <Field
       label={label}
-      htmlFor={name}
+      htmlFor={fieldId}
       hint={`${largura} × ${altura} px. Deixe o essencial no centro: em telas largas a imagem é cortada em faixa.`}
     >
       <div className="flex flex-col gap-2">
         <Input
-          id={name}
+          id={fieldId}
           name={name}
           type="url"
           value={url}

@@ -51,6 +51,7 @@ export function AreaRow({ area }: { area: Area }) {
             />
           </Field>
           <CoverField
+            id={`coverUrl-${area.id}`}
             name="coverUrl"
             largura={1600}
             altura={1000}
