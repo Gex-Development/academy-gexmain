@@ -42,11 +42,29 @@ export async function createTestUser(input: {
 }
 
 /**
+ * Cache de clientes autenticados, por email+senha. Muitos testes reautenticam
+ * o mesmo punhado de usuários repetidas vezes; sem isso a suíte estoura o
+ * rate limit de auth do Supabase (signInWithPassword). Vive no módulo, então
+ * dura o processo do arquivo de teste — cada usuário distinto loga uma vez
+ * por arquivo, não uma vez por chamada.
+ *
+ * Seguro mesmo quando um teste muda o `status` do usuário no meio do arquivo
+ * (ativo → inativo): RLS é avaliado a cada consulta contra o estado atual do
+ * banco, não fica gravado no JWT — o cliente cacheado continua refletindo a
+ * realidade corrente mesmo com a sessão antiga.
+ */
+const cacheDeClientes = new Map<string, ReturnType<typeof createClient<Database>>>()
+
+/**
  * Cliente autenticado como o usuário de teste indicado, com a chave publicável
  * (não a service_role): é o único jeito de exercitar RLS de verdade — um
  * cliente com service_role ignora as políticas por completo.
  */
 export async function authClient(email: string, password = SENHA_DE_TESTE) {
+  const chave = `${email}:${password}`
+  const emCache = cacheDeClientes.get(chave)
+  if (emCache) return emCache
+
   const client = createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
@@ -54,6 +72,8 @@ export async function authClient(email: string, password = SENHA_DE_TESTE) {
   )
   const { error } = await client.auth.signInWithPassword({ email, password })
   if (error) throw error
+
+  cacheDeClientes.set(chave, client)
   return client
 }
 

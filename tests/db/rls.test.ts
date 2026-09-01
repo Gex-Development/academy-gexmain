@@ -551,14 +551,14 @@ describe('RLS — courses_escrita: WITH CHECK de INSERT também exige auth_is_ac
     const { data: naoExiste } = await db.from('courses').select('id').eq('slug', slugFantasma)
     expect(naoExiste).toEqual([])
 
-    // Sem .select() encadeado no insert de propósito: courses_leitura decide
-    // se a linha volta no RETURNING chamando can_manage_course(id), que
-    // reconsulta `courses` por id — dentro do MESMO comando de INSERT essa
-    // reconsulta não enxerga a própria linha ainda sendo inserida (efeito
-    // colateral do RETURNING, não uma falha de autorização: uma consulta
-    // SEPARADA logo depois, como a de baixo, encontra a linha normalmente).
-    // Isso é anterior a esta correção — já valia em 0003 — e não é o alvo
-    // deste achado; confirmar sucesso via reread evita depender dele.
+    // Sem .select() encadeado aqui só por estilo (a confirmação abaixo usa
+    // uma consulta separada) — não por necessidade. Desde 0007
+    // (endurece_funcoes_security_definer), courses_leitura usa
+    // can_manage_area(area_id), que avalia as colunas da própria linha, e
+    // RETURNING enxerga a linha recém-inserida normalmente. Ver o teste "RLS
+    // — courses_leitura: RETURNING funciona para curso recém-criado em
+    // rascunho" mais abaixo, que prova .insert({...}).select('id').single()
+    // funcionando para um curso em rascunho.
     const comoAtivo = await authClient(emailLiderAtivo)
     const ativoId = (await comoAtivo.auth.getUser()).data.user!.id
     const slugDeVerdade = `curso-de-verdade-${stamp}`
