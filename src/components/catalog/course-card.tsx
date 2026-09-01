@@ -47,7 +47,9 @@ export function CourseCard({ item }: { item: CatalogItem }) {
     <li>
       <Link
         href={`/curso/${item.slug}`}
-        className="block rounded-card focus:outline-none focus:ring-2 focus:ring-marca-500"
+        // ring-acao, igual area-card.tsx: os dois cards dividem a mesma
+        // grade em /area/[slug] e devem indicar foco com o mesmo tom.
+        className="block rounded-card focus:outline-none focus:ring-2 focus:ring-acao"
       >
         {corpo}
       </Link>
