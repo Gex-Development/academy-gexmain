@@ -14,6 +14,7 @@
 // curso — em vez de reimplementar a conta em paralelo e provar a suposição do
 // teste, não o código real.
 import { canAccessCourse, type AccessLevel, type AccessUser } from '@/lib/access'
+import { buildProgress, type CourseProgress } from '@/lib/progress/percent'
 
 export type CatalogItem = {
   id: string
@@ -42,6 +43,7 @@ export type CatalogItem = {
   position: number
   access: AccessLevel
   requestStatus: 'none' | 'pending'
+  progress: CourseProgress
 }
 
 export type Catalog = {
@@ -80,6 +82,7 @@ export function paraCatalogItem(
   row: LinhaCatalogo,
   user: AccessUser,
   aulasPorCurso: ReadonlyMap<string, number>,
+  concluidasPorCurso: ReadonlyMap<string, number>,
   liberados: ReadonlySet<string>,
   pendentes: ReadonlySet<string>,
 ): CatalogItem {
@@ -107,6 +110,7 @@ export function paraCatalogItem(
       liberados,
     ),
     requestStatus: pendentes.has(row.id) ? 'pending' : 'none',
+    progress: buildProgress(concluidasPorCurso.get(row.id) ?? 0, aulasPorCurso.get(row.id) ?? 0),
   }
 }
 

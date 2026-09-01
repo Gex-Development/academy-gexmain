@@ -138,6 +138,7 @@ describe('catálogo — contagem de aulas de um curso que o viewer não pode abr
       cursos![0] as unknown as LinhaCatalogo,
       designer,
       aulasPorCurso,
+      new Map(),
       new Set(),
       new Set(),
     )
@@ -165,6 +166,7 @@ describe('catálogo — contagem de aulas de um curso que o viewer não pode abr
       cursos![0] as unknown as LinhaCatalogo,
       lider,
       aulasPorCurso,
+      new Map(),
       new Set(),
       new Set(),
     )
@@ -198,7 +200,14 @@ describe('catálogo — contagem de aulas de um curso que o viewer não pode abr
     const pendentes = new Set((solicitacoes ?? []).map((s) => s.course_id))
 
     const designer: AccessUser = { id: designerId, role: 'member', status: 'active', areaId: areaDesign }
-    const item = paraCatalogItem(cursos![0] as unknown as LinhaCatalogo, designer, aulasPorCurso, new Set(), pendentes)
+    const item = paraCatalogItem(
+      cursos![0] as unknown as LinhaCatalogo,
+      designer,
+      aulasPorCurso,
+      new Map(),
+      new Set(),
+      pendentes,
+    )
 
     expect(item.access).toBe('none')
     expect(item.lessonCount).toBe(2)

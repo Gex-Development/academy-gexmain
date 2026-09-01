@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ProgressBar } from '@/components/progress/progress-bar'
 import type { CatalogItem } from '@/server/catalog'
 
 export function CourseCard({ item }: { item: CatalogItem }) {
@@ -34,6 +35,11 @@ export function CourseCard({ item }: { item: CatalogItem }) {
         {item.lessonCount === 1 ? 'aula' : 'aulas'}
         {item.requestStatus === 'pending' && ' · acesso solicitado'}
       </p>
+      {item.access !== 'none' && item.progress.total > 0 && (
+        <div className="mt-2">
+          <ProgressBar completed={item.progress.completed} total={item.progress.total} />
+        </div>
+      )}
     </>
   )
 

@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { CompleteButton } from '@/components/progress/complete-button'
 import { VideoPlayer } from '@/components/video/video-player'
 import { listAttachments } from '@/server/attachments'
+import { getCompletedLessonIds } from '@/server/progress'
 import { getLessonView } from '@/server/viewer'
 
 function formatarTamanho(bytes: number) {
@@ -20,6 +22,7 @@ export default async function AulaPage({
 
   const { course, lesson, anterior, proxima } = view
   const attachments = await listAttachments(lesson.id)
+  const concluidas = await getCompletedLessonIds(course.id)
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -30,6 +33,10 @@ export default async function AulaPage({
       <h1 className="mb-4 mt-2 text-xl font-semibold">{lesson.title}</h1>
 
       <VideoPlayer provider={lesson.provider} videoRef={lesson.ref} title={lesson.title} />
+
+      <div className="mt-4">
+        <CompleteButton lessonId={lesson.id} courseSlug={course.slug} completed={concluidas.has(lesson.id)} />
+      </div>
 
       {lesson.description && (
         // Texto puro: `whitespace-pre-line` preserva as quebras sem interpretar marcação.

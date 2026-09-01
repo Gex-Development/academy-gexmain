@@ -50,11 +50,27 @@ export async function getCatalog(): Promise<Catalog> {
   const { data: contagens } = await supabase.rpc('contar_aulas_publicadas')
   const aulasPorCurso = new Map((contagens ?? []).map((linha) => [linha.course_id, Number(linha.total)]))
 
+  // Progresso da própria pessoa, agrupado por curso. lesson_progress não tem
+  // o vazamento de conteúdo que a contagem de aulas tinha (a linha não expõe
+  // video_ref), então aqui um join comum basta — e o embed com lessons!inner
+  // já garante que só entram linhas de aula que a política lessons_leitura
+  // deixa esta pessoa ver.
+  const { data: concluidas } = await supabase
+    .from('lesson_progress')
+    .select('lesson_id, lessons!inner(course_id)')
+    .eq('user_id', user.id)
+
+  const concluidasPorCurso = new Map<string, number>()
+  for (const linha of concluidas ?? []) {
+    const cursoId = (linha.lessons as unknown as { course_id: string }).course_id
+    concluidasPorCurso.set(cursoId, (concluidasPorCurso.get(cursoId) ?? 0) + 1)
+  }
+
   const liberados = new Set((liberacoes ?? []).map((l) => l.course_id))
   const pendentes = new Set((solicitacoes ?? []).map((s) => s.course_id))
 
   const items = ((cursos ?? []) as unknown as LinhaCatalogo[]).map((row) =>
-    paraCatalogItem(row, user, aulasPorCurso, liberados, pendentes),
+    paraCatalogItem(row, user, aulasPorCurso, concluidasPorCurso, liberados, pendentes),
   )
 
   return montarCatalogo(items)

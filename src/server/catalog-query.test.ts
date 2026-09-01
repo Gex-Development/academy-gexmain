@@ -25,25 +25,25 @@ const bloqueado: AccessUser = { id: 'u1', role: 'member', status: 'active', area
 describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
   it('curso bloqueado mantém a contagem vinda da RPC — não zera, não vem da linha de lessons', () => {
     const aulasPorCurso = new Map([['c1', 5]])
-    const item = paraCatalogItem(linha(), bloqueado, aulasPorCurso, new Set(), new Set())
+    const item = paraCatalogItem(linha(), bloqueado, aulasPorCurso, new Map(), new Set(), new Set())
     expect(item.access).toBe('none')
     expect(item.lessonCount).toBe(5)
   })
 
   it('curso sem entrada no mapa (nenhuma aula publicada) mostra 0, não erro', () => {
-    const item = paraCatalogItem(linha(), bloqueado, new Map(), new Set(), new Set())
+    const item = paraCatalogItem(linha(), bloqueado, new Map(), new Map(), new Set(), new Set())
     expect(item.lessonCount).toBe(0)
   })
 
   it('liberação individual muda o acesso para "view" sem alterar a contagem', () => {
     const aulasPorCurso = new Map([['c1', 2]])
-    const item = paraCatalogItem(linha(), bloqueado, aulasPorCurso, new Set(['c1']), new Set())
+    const item = paraCatalogItem(linha(), bloqueado, aulasPorCurso, new Map(), new Set(['c1']), new Set())
     expect(item.access).toBe('view')
     expect(item.lessonCount).toBe(2)
   })
 
   it('marca requestStatus "pending" quando o curso está no conjunto de solicitações', () => {
-    const item = paraCatalogItem(linha(), bloqueado, new Map(), new Set(), new Set(['c1']))
+    const item = paraCatalogItem(linha(), bloqueado, new Map(), new Map(), new Set(), new Set(['c1']))
     expect(item.requestStatus).toBe('pending')
   })
 
@@ -51,6 +51,7 @@ describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
     const item = paraCatalogItem(
       linha({ position: 7, areas: { name: 'Tráfego', color: null, position: 3 } }),
       bloqueado,
+      new Map(),
       new Map(),
       new Set(),
       new Set(),
@@ -60,7 +61,7 @@ describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
   })
 
   it('CatalogItem nunca carrega campo de aula, vídeo ou anexo — só as chaves do tipo', () => {
-    const item = paraCatalogItem(linha(), bloqueado, new Map([['c1', 3]]), new Set(), new Set())
+    const item = paraCatalogItem(linha(), bloqueado, new Map([['c1', 3]]), new Map(), new Set(), new Set())
     expect(Object.keys(item).sort()).toEqual(
       [
         'access',
@@ -74,11 +75,48 @@ describe('paraCatalogItem — contagem de aulas independe do acesso', () => {
         'isOnboarding',
         'lessonCount',
         'position',
+        'progress',
         'requestStatus',
         'slug',
         'title',
       ].sort(),
     )
+  })
+})
+
+describe('paraCatalogItem — progresso acompanha o acesso, não a matrícula', () => {
+  const liberado: AccessUser = { id: 'u2', role: 'member', status: 'active', areaId: 'area-trafego' }
+
+  it('curso sem nenhuma aula concluída: progresso é 0 de N', () => {
+    const aulasPorCurso = new Map([['c1', 8]])
+    const item = paraCatalogItem(linha(), liberado, aulasPorCurso, new Map(), new Set(), new Set())
+    expect(item.progress).toEqual({ completed: 0, total: 8, percent: 0 })
+  })
+
+  it('curso parcialmente concluído: progresso reflete completed/total, com percentual arredondado', () => {
+    const aulasPorCurso = new Map([['c1', 3]])
+    const concluidasPorCurso = new Map([['c1', 1]])
+    const item = paraCatalogItem(linha(), liberado, aulasPorCurso, concluidasPorCurso, new Set(), new Set())
+    expect(item.progress).toEqual({ completed: 1, total: 3, percent: 33 })
+  })
+
+  // Curso bloqueado: a pessoa não tem o que concluir nele, então "completed"
+  // é 0 — mas "total" continua vindo da contagem real de aulas (a mesma que
+  // popula lessonCount para o card mostrar "N aulas"), não zero. É assim na
+  // prática: concluidasPorCurso vem de um select em lesson_progress com
+  // `lessons!inner(course_id)` (ver catalog.ts) — e a política lessons_leitura
+  // barra essa junção para quem não acessa o curso, então a linha nunca chega
+  // ao mapa. Passar aqui um concluidasPorCurso vazio para o curso bloqueado
+  // reproduz esse estado real; o mapa NÃO fica ausente por decisão de
+  // paraCatalogItem, e sim porque o dado nunca chega até ele — quem esconde a
+  // barra de progresso de um curso bloqueado é o `item.access !== 'none'` em
+  // course-card.tsx, não um zeramento aqui.
+  it('curso bloqueado: nada concluído (a pessoa não tem o que concluir), total continua sendo a contagem real', () => {
+    const aulasPorCurso = new Map([['c1', 8]])
+    const item = paraCatalogItem(linha(), bloqueado, aulasPorCurso, new Map(), new Set(), new Set())
+    expect(item.access).toBe('none')
+    expect(item.lessonCount).toBe(8)
+    expect(item.progress).toEqual({ completed: 0, total: 8, percent: 0 })
   })
 })
 
@@ -92,10 +130,11 @@ describe('montarCatalogo — separação e agrupamento', () => {
       linha({ id: 'o1', is_onboarding: true, area_id: null, areas: null }),
       bloqueado,
       new Map(),
+      new Map(),
       new Set(),
       new Set(),
     )
-    const curso = paraCatalogItem(linha({ id: 'c1' }), bloqueado, new Map(), new Set(), new Set())
+    const curso = paraCatalogItem(linha({ id: 'c1' }), bloqueado, new Map(), new Map(), new Set(), new Set())
 
     const catalogo = montarCatalogo([trilha, curso])
     expect(catalogo.onboarding?.id).toBe('o1')
@@ -107,6 +146,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
     const orfao = paraCatalogItem(
       linha({ id: 'x1', area_id: null, areas: null }),
       bloqueado,
+      new Map(),
       new Map(),
       new Set(),
       new Set(),
@@ -132,6 +172,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
         }),
         bloqueado,
         new Map(),
+        new Map(),
         new Set(),
         new Set(),
       )
@@ -144,6 +185,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
         }),
         bloqueado,
         new Map(),
+        new Map(),
         new Set(),
         new Set(),
       )
@@ -155,8 +197,8 @@ describe('montarCatalogo — separação e agrupamento', () => {
     it('cursos dentro de um grupo seguem a position do curso, mesmo contra a ordem alfabética do título', () => {
       // "Zeta" (position 0) vem antes de "Alfa" (position 1) — o oposto do
       // que localeCompare(title) sozinho decidiria.
-      const zeta = paraCatalogItem(linha({ id: 'z1', title: 'Zeta', position: 0 }), bloqueado, new Map(), new Set(), new Set())
-      const alfa = paraCatalogItem(linha({ id: 'a1', title: 'Alfa', position: 1 }), bloqueado, new Map(), new Set(), new Set())
+      const zeta = paraCatalogItem(linha({ id: 'z1', title: 'Zeta', position: 0 }), bloqueado, new Map(), new Map(), new Set(), new Set())
+      const alfa = paraCatalogItem(linha({ id: 'a1', title: 'Alfa', position: 1 }), bloqueado, new Map(), new Map(), new Set(), new Set())
 
       const catalogo = montarCatalogo([alfa, zeta])
       expect(catalogo.grupos).toHaveLength(1)
@@ -173,6 +215,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
         }),
         bloqueado,
         new Map(),
+        new Map(),
         new Set(),
         new Set(),
       )
@@ -185,14 +228,15 @@ describe('montarCatalogo — separação e agrupamento', () => {
         }),
         bloqueado,
         new Map(),
+        new Map(),
         new Set(),
         new Set(),
       )
       const catalogoDeGrupos = montarCatalogo([zebraTrafego, abelhaDesign])
       expect(catalogoDeGrupos.grupos.map((g) => g.areaName)).toEqual(['Design', 'Tráfego'])
 
-      const zeta = paraCatalogItem(linha({ id: 'z2', title: 'Zeta', position: 5 }), bloqueado, new Map(), new Set(), new Set())
-      const alfa = paraCatalogItem(linha({ id: 'a2', title: 'Alfa', position: 5 }), bloqueado, new Map(), new Set(), new Set())
+      const zeta = paraCatalogItem(linha({ id: 'z2', title: 'Zeta', position: 5 }), bloqueado, new Map(), new Map(), new Set(), new Set())
+      const alfa = paraCatalogItem(linha({ id: 'a2', title: 'Alfa', position: 5 }), bloqueado, new Map(), new Map(), new Set(), new Set())
       const catalogoDeItens = montarCatalogo([zeta, alfa])
       expect(catalogoDeItens.grupos[0]!.items.map((i) => i.title)).toEqual(['Alfa', 'Zeta'])
     })
@@ -204,12 +248,14 @@ describe('montarCatalogo — separação e agrupamento', () => {
         linha({ id: 'c1', title: 'Curso Com Área', areas: { name: 'Zoologia', color: null, position: 99 } }),
         bloqueado,
         new Map(),
+        new Map(),
         new Set(),
         new Set(),
       )
       const orfao = paraCatalogItem(
         linha({ id: 'x1', title: 'Curso Órfão', area_id: null, areas: null }),
         bloqueado,
+        new Map(),
         new Map(),
         new Set(),
         new Set(),
@@ -233,6 +279,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
         }),
         bloqueado,
         new Map(),
+        new Map(),
         new Set(),
         new Set(),
       )
@@ -244,6 +291,7 @@ describe('montarCatalogo — separação e agrupamento', () => {
           areas: { name: 'Design', color: null, position: 1 },
         }),
         bloqueado,
+        new Map(),
         new Map(),
         new Set(),
         new Set(),
