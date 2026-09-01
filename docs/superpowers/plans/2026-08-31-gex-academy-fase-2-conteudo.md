@@ -111,7 +111,9 @@ Valem as mesmas restrições da fase 1, repetidas aqui porque cada tarefa é lid
   - `vturbScriptSrc(ref: string): string`
   - `vturbContainerId(ref: string): string`
 
-  Formato do `ref`: YouTube guarda o id de 11 caracteres; VTurb guarda `"<contaUuid>/<playerUuid>"`.
+  Formato do `ref`: YouTube guarda o id de 11 caracteres; VTurb guarda
+  `"<contaUuid>/<playerId>/<versao>"` — ex.:
+  `"e451b1fd-5061-402e-b7d3-3c5addf178dd/694a5bad71611df8184abb68/v4"`.
 
 - [ ] **Step 1: Escrever os testes que falham**
 
@@ -121,8 +123,11 @@ Crie `src/lib/video/parse-video.test.ts`:
 import { describe, expect, it } from 'vitest'
 import { parseVideoInput, vturbContainerId, vturbScriptSrc, youtubeEmbedUrl } from './parse-video'
 
-const CONTA = '0f9c1b2a-3d4e-4f50-8a61-72b3c4d5e6f7'
-const PLAYER = 'aa11bb22-cc33-4d44-8e55-ff6677889900'
+// Valores reais de um snippet da conta VTurb da GEX. O id da CONTA é um UUID;
+// o id do PLAYER são 24 caracteres hex (não é UUID) e o caminho traz a versão.
+const CONTA = 'e451b1fd-5061-402e-b7d3-3c5addf178dd'
+const PLAYER = '694a5bad71611df8184abb68'
+const REF = `${CONTA}/${PLAYER}/v4`
 
 describe('parseVideoInput — YouTube', () => {
   it('lê a URL padrão de watch', () => {
@@ -167,38 +172,56 @@ describe('parseVideoInput — YouTube', () => {
 })
 
 describe('parseVideoInput — VTurb', () => {
-  it('extrai conta e player do snippet de script', () => {
-    const snippet = `<div id="vid_${PLAYER}"></div><script type="text/javascript">var s=document.createElement("script");s.src="https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js";document.head.appendChild(s);</script>`
-    expect(parseVideoInput(snippet)).toEqual({
-      provider: 'vturb',
-      ref: `${CONTA}/${PLAYER}`,
-    })
+  // Snippet real, copiado da conta da GEX. Repare que ele traz um web component
+  // <vturb-smartplayer>, o id do player NÃO é UUID, e o caminho tem versão.
+  const SNIPPET_REAL = `<vturb-smartplayer id="vid-${PLAYER}" style="display: block; margin: 0 auto; width: 100%; max-width: 400px;"><div class="vturb-player-placeholder" style="position: relative; width: 100%; padding: 125% 0 0; z-index: 0; background-color: black;"></div></vturb-smartplayer> <script type="text/javascript"> var s=document.createElement("script"); s.src="https://scripts.converteai.net/${CONTA}/players/${PLAYER}/v4/player.js", s.async=!0,document.head.appendChild(s); </script>`
+
+  it('extrai conta, player e versão do snippet real', () => {
+    expect(parseVideoInput(SNIPPET_REAL)).toEqual({ provider: 'vturb', ref: REF })
+  })
+
+  it('extrai também do bloco com preloads que o VTurb costuma acompanhar', () => {
+    const comPreloads = `${SNIPPET_REAL}\n<link rel="preload" href="https://scripts.converteai.net/${CONTA}/players/${PLAYER}/v4/player.js" as="script">\n<link rel="dns-prefetch" href="https://cdn.converteai.net">`
+    expect(parseVideoInput(comPreloads)).toEqual({ provider: 'vturb', ref: REF })
   })
 
   it('extrai da URL do player colada sozinha', () => {
-    const url = `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js`
-    expect(parseVideoInput(url)).toEqual({ provider: 'vturb', ref: `${CONTA}/${PLAYER}` })
+    const url = `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/v4/player.js`
+    expect(parseVideoInput(url)).toEqual({ provider: 'vturb', ref: REF })
   })
 
-  it('aceita o par conta/player digitado à mão', () => {
-    expect(parseVideoInput(`${CONTA}/${PLAYER}`)).toEqual({
-      provider: 'vturb',
-      ref: `${CONTA}/${PLAYER}`,
-    })
+  it('aceita o trio conta/player/versão digitado à mão', () => {
+    expect(parseVideoInput(REF)).toEqual({ provider: 'vturb', ref: REF })
   })
 
-  it('recusa snippet com apenas um UUID', () => {
+  it('assume v4 quando o caminho não traz versão', () => {
+    const semVersao = `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js`
+    expect(parseVideoInput(semVersao)).toEqual({ provider: 'vturb', ref: REF })
+  })
+
+  it('não confunde o id do vídeo no CDN com o id do player', () => {
+    // O snippet traz um terceiro id, do arquivo de mídia, que NÃO serve aqui.
+    const soCdn = `<link rel="preload" href="https://cdn.converteai.net/${CONTA}/694a5b9d71611df8184abb66/main.m3u8" as="fetch">`
+    expect(parseVideoInput(soCdn)).toBeNull()
+  })
+
+  it('recusa snippet só com o id da conta', () => {
     expect(parseVideoInput(`<script src="https://scripts.converteai.net/${CONTA}/x.js"></script>`)).toBeNull()
   })
 
+  it('recusa id de player com tamanho errado', () => {
+    const curto = `https://scripts.converteai.net/${CONTA}/players/abc123/v4/player.js`
+    expect(parseVideoInput(curto)).toBeNull()
+  })
+
   it('monta a URL do script a partir do ref', () => {
-    expect(vturbScriptSrc(`${CONTA}/${PLAYER}`)).toBe(
-      `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/player.js`,
+    expect(vturbScriptSrc(REF)).toBe(
+      `https://scripts.converteai.net/${CONTA}/players/${PLAYER}/v4/player.js`,
     )
   })
 
-  it('monta o id do container a partir do player', () => {
-    expect(vturbContainerId(`${CONTA}/${PLAYER}`)).toBe(`vid_${PLAYER}`)
+  it('monta o id do container com hífen, como o snippet real', () => {
+    expect(vturbContainerId(REF)).toBe(`vid-${PLAYER}`)
   })
 })
 
@@ -252,9 +275,21 @@ Crie `src/lib/video/parse-video.ts`:
 import type { ParsedVideo } from './types'
 
 const YOUTUBE_ID = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])/
+
+// Formatos confirmados contra um snippet real da conta VTurb da GEX:
+//   conta   -> UUID
+//   player  -> 24 caracteres hex, NÃO é UUID
+//   versão  -> "v4" no caminho (opcional; ausente em snippets mais antigos)
+// O host `scripts.converteai.net` é o do player. O `cdn.converteai.net` do mesmo
+// snippet carrega o arquivo de mídia com um TERCEIRO id — que não serve aqui, e
+// por isso o padrão exige o segmento `/players/`.
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
-const VTURB_URL = new RegExp(`converteai\\.net/(${UUID})/players/(${UUID})`)
-const VTURB_PAR = new RegExp(`^(${UUID})/(${UUID})$`)
+const PLAYER_ID = '[0-9a-fA-F]{24}'
+const VERSAO_PADRAO = 'v4'
+const VTURB_URL = new RegExp(
+  `scripts\\.converteai\\.net/(${UUID})/players/(${PLAYER_ID})(?:/(v\\d+))?/player\\.js`,
+)
+const VTURB_TRIO = new RegExp(`^(${UUID})/(${PLAYER_ID})(?:/(v\\d+))?$`)
 
 /**
  * Identifica o provedor de vídeo a partir do que o líder colou no editor.
@@ -273,11 +308,11 @@ export function parseVideoInput(input: string): ParsedVideo | null {
   const youtube = texto.match(YOUTUBE_ID)
   if (youtube) return { provider: 'youtube', ref: youtube[1] }
 
-  const vturbUrl = texto.match(VTURB_URL)
-  if (vturbUrl) return { provider: 'vturb', ref: `${vturbUrl[1]}/${vturbUrl[2]}` }
-
-  const vturbPar = texto.match(VTURB_PAR)
-  if (vturbPar) return { provider: 'vturb', ref: `${vturbPar[1]}/${vturbPar[2]}` }
+  const vturb = texto.match(VTURB_URL) ?? texto.match(VTURB_TRIO)
+  if (vturb) {
+    const versao = vturb[3] ?? VERSAO_PADRAO
+    return { provider: 'vturb', ref: `${vturb[1]}/${vturb[2]}/${versao}` }
+  }
 
   return null
 }
@@ -287,12 +322,13 @@ export function youtubeEmbedUrl(ref: string): string {
 }
 
 export function vturbScriptSrc(ref: string): string {
-  const [conta, player] = ref.split('/')
-  return `https://scripts.converteai.net/${conta}/players/${player}/player.js`
+  const [conta, player, versao] = ref.split('/')
+  return `https://scripts.converteai.net/${conta}/players/${player}/${versao}/player.js`
 }
 
+/** O snippet real usa hífen, não sublinhado: `id="vid-<playerId>"`. */
 export function vturbContainerId(ref: string): string {
-  return `vid_${ref.split('/')[1]}`
+  return `vid-${ref.split('/')[1]}`
 }
 ```
 
@@ -313,11 +349,16 @@ export type { ParsedVideo, VideoProvider } from './types'
 Run: `npm test -- src/lib/video`
 Expected: PASS — 18 testes.
 
-- [ ] **Step 5: Conferir contra um snippet real do VTurb**
+- [ ] **Step 5: Conferência contra o snippet real — já feita**
 
-Pegue na conta VTurb da GEX o código de incorporação de qualquer vídeo e cole-o num teste temporário para confirmar que `parseVideoInput` devolve `provider: 'vturb'` com os dois UUIDs, e que o `id` do `<div>` do snippet coincide com o que `vturbContainerId` produz.
+Este passo pedia confrontar o parser com um código de incorporação de verdade.
+Isso **já aconteceu** antes de a tarefa ser despachada, e o plano acima foi
+corrigido: o snippet real da conta da GEX mostrou que três suposições estavam
+erradas — havia um segmento de versão no caminho, o id do player não é UUID, e o
+container é um web component `<vturb-smartplayer id="vid-...">` com hífen.
 
-Se o `id` do container seguir outro padrão, ajuste **apenas** `vturbContainerId` e o teste correspondente — nenhum outro arquivo do sistema conhece esse formato. Se a URL do script tiver outro host, ajuste `VTURB_URL` e `vturbScriptSrc`. Depois apague o teste temporário.
+Os testes desta tarefa usam o snippet real. Não há nada a conferir aqui; apenas
+confirme que os testes do VTurb passam com os valores reais embutidos neles.
 
 - [ ] **Step 6: Commit**
 
@@ -1336,6 +1377,7 @@ Crie `src/components/video/video-player.tsx`:
 'use client'
 
 import Script from 'next/script'
+import { createElement } from 'react'
 import type { VideoProvider } from '@/lib/video'
 import { vturbContainerId, vturbScriptSrc, youtubeEmbedUrl } from '@/lib/video'
 
@@ -1367,9 +1409,21 @@ export function VideoPlayer({
     )
   }
 
+  // O VTurb não usa uma <div>: o player.js registra o custom element
+  // <vturb-smartplayer> e procura o elemento com id "vid-<playerId>".
+  // Usamos createElement em vez de JSX porque JSX exigiria declarar o elemento
+  // em IntrinsicElements, e o caminho dessa declaração mudou entre versões do
+  // React — createElement funciona em qualquer uma, sem tipagem ambiente.
   return (
     <div className="w-full overflow-hidden rounded-card bg-black">
-      <div id={vturbContainerId(videoRef)} />
+      {createElement(
+        'vturb-smartplayer',
+        { id: vturbContainerId(videoRef), style: { display: 'block', width: '100%' } },
+        // Reserva o espaço antes de o player carregar. 56.25% = 16:9, a
+        // proporção usual de aula gravada; o player se reajusta ao carregar,
+        // então um vídeo vertical não fica cortado, só reflui.
+        <div style={{ position: 'relative', width: '100%', padding: '56.25% 0 0', backgroundColor: 'black' }} />,
+      )}
       <Script src={vturbScriptSrc(videoRef)} strategy="afterInteractive" />
     </div>
   )
