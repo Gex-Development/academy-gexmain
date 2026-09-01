@@ -10,6 +10,25 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-31-gex-academy-design.md`
 
+## Convenção de erros do banco
+
+Toda `raise exception` escrita por nós no schema **deve** carregar o SQLSTATE
+próprio do projeto:
+
+```sql
+raise exception 'Mensagem em português, escrita para quem usa a tela.'
+  using errcode = 'GX001';
+```
+
+`toActionError` repassa ao usuário **apenas** mensagens com o código `GX001`;
+qualquer outro erro vira a mensagem genérica. Sem isso o repasse teria de casar
+`P0001`, que é o código padrão de *toda* `raise exception` em PL/pgSQL — e a
+primeira trigger futura que interpolasse um nome de coluna ou o conteúdo de uma
+linha passaria a exibi-lo no navegador, em silêncio.
+
+Mensagens `GX001` são parte da interface: escreva-as para o colaborador, nunca
+com nome de tabela, de coluna ou valor de linha.
+
 ## Global Constraints
 
 Estas regras valem para **todas** as tarefas deste plano e dos planos das fases 2 e 3.
