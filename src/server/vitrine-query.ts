@@ -112,6 +112,33 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
 }
 
 /**
+ * Acha o CatalogItem de um `slug` no catálogo já carregado — trilha inicial
+ * ou qualquer grupo por área. Privada: capaDoCurso e corDaAreaDoCurso fazem
+ * a mesma busca por motivos diferentes (o banner "Continue de onde parou"
+ * precisa dos dois campos do MESMO curso — capa como degrau 1 da reserva,
+ * cor de área como degrau 2, ver hero-banner.tsx), então a travessia mora
+ * aqui uma vez só em vez de duplicada nas duas funções públicas.
+ *
+ * Olha o onboarding também, não só os grupos por área: o curso "continue de
+ * onde parou" pode ser a própria trilha inicial (ela também acumula
+ * progresso e pode aparecer aqui quando não é mais o destaque do banner —
+ * ver escolherDestaque). `null` quando o slug não aparece em lugar nenhum
+ * do catálogo — não deveria acontecer (getContinueWatching só devolve curso
+ * que o próprio getCourseView confirmou acessível), mas as duas funções
+ * públicas caem de volta para "sem capa"/"sem cor" em vez de lançar.
+ */
+function encontrarItemDoCatalogo(catalog: Catalog, slug: string): CatalogItem | null {
+  if (catalog.onboarding?.slug === slug) return catalog.onboarding
+
+  for (const grupo of catalog.grupos) {
+    const item = grupo.items.find((i) => i.slug === slug)
+    if (item) return item
+  }
+
+  return null
+}
+
+/**
  * A capa do curso de `slug`, procurada no catálogo já carregado.
  *
  * Existe para o banner "Continue de onde parou" da home: a §5.1.2 da spec
@@ -120,24 +147,23 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
  * aula. Quem chama (a home) já tem o catálogo inteiro em memória na mesma
  * requisição, então procurar o slug aqui é trabalho de função pura: nenhuma
  * consulta nova.
- *
- * Olha o onboarding também, não só os grupos por área: o curso "continue de
- * onde parou" pode ser a própria trilha inicial (ela também acumula
- * progresso e pode aparecer aqui quando não é mais o destaque do banner —
- * ver escolherDestaque). `null` quando o slug não aparece em lugar nenhum
- * do catálogo — não deveria acontecer (getContinueWatching só devolve curso
- * que o próprio getCourseView confirmou acessível), mas cai de volta para
- * "sem capa" em vez de lançar.
  */
 export function capaDoCurso(catalog: Catalog, slug: string): string | null {
-  if (catalog.onboarding?.slug === slug) return catalog.onboarding.coverUrl
+  return encontrarItemDoCatalogo(catalog, slug)?.coverUrl ?? null
+}
 
-  for (const grupo of catalog.grupos) {
-    const item = grupo.items.find((i) => i.slug === slug)
-    if (item) return item.coverUrl
-  }
-
-  return null
+/**
+ * A cor da ÁREA do curso de `slug` — o degrau 2 da reserva de capa do
+ * banner "Continue de onde parou" (ver hero-banner.tsx): sem capa própria,
+ * o curso empresta a cor da área, do mesmo jeito que course-card.tsx e
+ * locked-course.tsx já fazem com `item.areaColor`/`course.areaColor`. Para
+ * a trilha inicial, é sempre `null` (area_id é nulo por definição — ver o
+ * comentário em catalog-query.ts), o que é correto: a trilha não tem área
+ * para emprestar cor nenhuma, então o banner cai direto no degrau 3
+ * (gradiente).
+ */
+export function corDaAreaDoCurso(catalog: Catalog, slug: string): string | null {
+  return encontrarItemDoCatalogo(catalog, slug)?.areaColor ?? null
 }
 
 /**

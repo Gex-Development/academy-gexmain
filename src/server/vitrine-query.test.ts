@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Catalog, CatalogItem } from './catalog-query'
-import { capaDoCurso, escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
+import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
 
 function item(over: Partial<CatalogItem> = {}): CatalogItem {
   return {
@@ -195,6 +195,26 @@ describe('capaDoCurso', () => {
     ])
 
     expect(capaDoCurso(catalog, 'curso-b')).toBe('https://exemplo.test/b.png')
+  })
+})
+
+describe('corDaAreaDoCurso', () => {
+  it('encontra a cor da área de um curso dentro de um grupo', () => {
+    const catalog = catalogo([grupo({ items: [item({ slug: 'curso-a', areaColor: '#7a2e2e' })] })])
+
+    expect(corDaAreaDoCurso(catalog, 'curso-a')).toBe('#7a2e2e')
+  })
+
+  it('trilha inicial não tem área — devolve null, não lança', () => {
+    const catalog = catalogo([], item({ isOnboarding: true, slug: 'trilha', areaColor: null }))
+
+    expect(corDaAreaDoCurso(catalog, 'trilha')).toBeNull()
+  })
+
+  it('slug que não aparece em nenhum grupo nem na trilha devolve null', () => {
+    const catalog = catalogo([grupo({ items: [item({ slug: 'curso-a' })] })])
+
+    expect(corDaAreaDoCurso(catalog, 'nao-existe')).toBeNull()
   })
 })
 

@@ -3,7 +3,7 @@ import { HeroBanner } from '@/components/catalog/hero-banner'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getCatalog } from '@/server/catalog'
 import { getContinueWatching } from '@/server/progress'
-import { capaDoCurso, escolherDestaque, montarVitrine } from '@/server/vitrine-query'
+import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine } from '@/server/vitrine-query'
 
 export const metadata = { title: 'Início — GEX Academy' }
 
@@ -37,6 +37,7 @@ export default async function HomePage() {
             `${destaque.item.lessonCount} ${destaque.item.lessonCount === 1 ? 'aula' : 'aulas'} sobre a empresa`
           }
           coverUrl={destaque.item.coverUrl}
+          color={destaque.item.areaColor}
           // DESVIO DE SPEC, registrado (tabela §3 de
           // docs/superpowers/specs/2026-09-01-gex-academy-vitrine-design.md):
           // a §5.1.1 pede que o botão aponte para a PRÓXIMA AULA NÃO
@@ -61,6 +62,7 @@ export default async function HomePage() {
           // vitrine-query.ts). Como o banco real não tem trilha inicial
           // hoje, este é o banner que a maioria das pessoas vai ver.
           coverUrl={capaDoCurso(catalog, continuar.courseSlug)}
+          color={corDaAreaDoCurso(catalog, continuar.courseSlug)}
           href={`/curso/${continuar.courseSlug}/aula/${continuar.lessonSlug}`}
           textoBotao="Continuar"
         />
