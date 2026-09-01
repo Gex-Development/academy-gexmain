@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { CurrentUser } from '@/lib/auth/session'
+import { GexLogo } from './gex-logo'
 import { navLinksForRole } from './nav-links'
 import { SignOutButton } from './sign-out-button'
+import { ThemeToggle } from './theme-toggle'
 
 export function AppShell({ user, children }: { user: CurrentUser; children: ReactNode }) {
   const links = navLinksForRole(user.role)
@@ -11,8 +13,8 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
     <div className="min-h-screen">
       <header className="border-b border-borda bg-superficie">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-          <Link href="/" className="text-base font-semibold text-marca-600">
-            GEX Academy
+          <Link href="/" className="text-marca-600" aria-label="Início">
+            <GexLogo className="h-6 w-auto" />
           </Link>
           <nav aria-label="Principal" className="flex flex-1 gap-4">
             {links.map((link) => (
@@ -26,6 +28,7 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
             ))}
           </nav>
           <span className="text-sm text-texto-suave">{user.fullName}</span>
+          <ThemeToggle />
           <SignOutButton />
         </div>
       </header>

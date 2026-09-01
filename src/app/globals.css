@@ -12,22 +12,36 @@
 
 /*
  * Identidade visual da GEX Academy.
- * Enquanto o manual de marca não chega, estes valores são provisórios.
- * Trocar a identidade definitiva significa alterar SOMENTE este bloco —
- * nenhum componente cita cor literal.
+ * Cores oficiais da marca: #004EAC (azul), #01CDFF (ciano), #221F20 (preto).
+ *
+ * O bloco @theme abaixo é o tema CLARO. O tema escuro (padrão da plataforma)
+ * é o bloco :root.dark, que redefine os MESMOS tokens. Componente nenhum cita
+ * cor literal nem usa variante `dark:` — quem muda é o token, e as telas de
+ * gestão, admin e fórum acompanham sem serem tocadas.
+ *
+ * Sobre o ciano: #01CDFF sobre branco é ilegível (contraste ~1.6:1). Por isso
+ * no tema claro a AÇÃO é o azul e o ciano só decora sobre fundo escuro (barra
+ * de progresso dentro de uma capa, rótulo sobre imagem). No escuro é o
+ * contrário. É deliberado, não inconsistência.
  */
 @theme {
-  --color-marca-50: #eef4ff;
-  --color-marca-100: #d9e6ff;
-  --color-marca-500: #2f6bff;
-  --color-marca-600: #1d4fd8;
-  --color-marca-700: #1a3fae;
+  --color-marca-50: #e6f0fb;
+  --color-marca-100: #c3dcf5;
+  --color-marca-500: #0060d4;
+  --color-marca-600: #004eac;
+  --color-marca-700: #003b83;
+
+  --color-ciano: #01cdff;
 
   --color-superficie: #ffffff;
-  --color-fundo: #f6f7f9;
-  --color-borda: #e3e6ea;
-  --color-texto: #14181f;
-  --color-texto-suave: #5b6472;
+  --color-fundo: #f5f6f8;
+  --color-borda: #e2e5ea;
+  --color-texto: #221f20;
+  --color-texto-suave: #5f5b5d;
+
+  /* Cor da AÇÃO e o texto que vai em cima dela. Invertem entre os temas. */
+  --color-acao: #004eac;
+  --color-acao-texto: #ffffff;
 
   --color-perigo: #c02626;
   --color-sucesso: #1f8a4c;
@@ -36,9 +50,33 @@
   --radius-card: 0.75rem;
 }
 
-html {
-  color-scheme: light;
+/*
+ * `:root.dark` (0,2,0) vence `:root` (0,1,0) sem depender da ordem em que o
+ * Tailwind emite o @theme — que muda entre versões.
+ */
+:root.dark {
+  --color-marca-50: #0b2036;
+  --color-marca-100: #12324f;
+  --color-marca-500: #3f9fe8;
+  --color-marca-600: #01cdff;
+  --color-marca-700: #7fe3ff;
+
+  --color-superficie: #221f20;
+  --color-fundo: #131213;
+  --color-borda: #353133;
+  --color-texto: #f4f3f4;
+  --color-texto-suave: #a09da0;
+
+  --color-acao: #01cdff;
+  --color-acao-texto: #221f20;
+
+  --color-perigo: #ff6b6b;
+  --color-sucesso: #4ecf8b;
+  --color-aviso: #e0a355;
 }
+
+html { color-scheme: light; }
+:root.dark { color-scheme: dark; }
 
 body {
   background-color: var(--color-fundo);
