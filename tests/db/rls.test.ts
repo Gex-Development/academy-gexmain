@@ -13,6 +13,7 @@ let alunoTrafegoId: string
 let emailLiderTrafego: string
 let emailTrafego: string
 let emailDesigner: string
+let adminAtivoId: string
 let emailAdminAtivo: string
 let emailAdminInativo: string
 
@@ -80,13 +81,15 @@ beforeAll(async () => {
   )
   // Papel admin, não a área de ninguém: existe só para provar que
   // auth_is_active() corta o acesso mesmo de quem administra a plataforma.
-  lixeira.usuario(
-    await createTestUser({
-      email: emailAdminAtivo,
-      fullName: 'Admin Ativo (RLS)',
-      role: 'admin',
-    }),
-  )
+  //
+  // admin-ativo NÃO entra na lixeira compartilhada — ver afterAll mais abaixo
+  // para o motivo (profiles_exige_admin torna impossível apagar o único
+  // admin ativo do banco, por design).
+  adminAtivoId = await createTestUser({
+    email: emailAdminAtivo,
+    fullName: 'Admin Ativo (RLS)',
+    role: 'admin',
+  })
   lixeira.usuario(
     await createTestUser({
       email: emailAdminInativo,
@@ -202,7 +205,47 @@ beforeAll(async () => {
   perguntaAlheia = alheia!.id
 })
 
-afterAll(() => lixeira.limpar())
+afterAll(async () => {
+  await lixeira.limpar()
+
+  // admin-ativo fica fora da lixeira compartilhada de propósito (achado 2 da
+  // re-revisão): numa base recém-resetada, sem seed.sql, ele seria o ÚNICO
+  // admin ativo do banco no momento da limpeza, e profiles_exige_admin
+  // (0001) bloqueia por design apagar o último admin ativo da plataforma —
+  // a invariante existe exatamente pra impedir isso, e não há como
+  // contornar via SQL nem escolhendo outra ordem de exclusão (quem quer que
+  // seja o ÚLTIMO admin ativo restante nunca pode ser apagado). Por isso a
+  // checagem abaixo é feita ANTES de tentar apagar, consultando o estado
+  // real do banco em vez de tentar-e-tratar o erro (a API de admin do
+  // Supabase Auth não garante repassar a mensagem original do gatilho, então
+  // não dava pra confiar em reconhecer "GX001" no erro).
+  //
+  // Nesta base de verdade, o admin real do product owner sempre está
+  // presente, então a exclusão abaixo roda normalmente — é o que garante
+  // zero rastro nas rodadas contra este projeto (conferido pelo dry-run de
+  // limpeza depois de cada execução). Só numa base recém-resetada, sem outro
+  // admin, é que admin-ativo fica pra trás — de propósito, documentado, em
+  // vez de deixar a suíte inteira vermelha por causa de um invariante que
+  // existe pra proteger a plataforma.
+  const admin = adminClient()
+  const { count } = await admin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'admin')
+    .eq('status', 'active')
+    .neq('id', adminAtivoId)
+
+  if ((count ?? 0) > 0) {
+    const { error } = await admin.auth.admin.deleteUser(adminAtivoId)
+    if (error) throw error
+  } else {
+    console.warn(
+      `criarLixeira: admin-ativo (${adminAtivoId}) não foi removido — é o único admin ativo do banco ` +
+        'no momento da limpeza (profiles_exige_admin bloquearia a exclusão). Isso só acontece numa base ' +
+        'recém-resetada, sem outro admin. Sweep manual eventual via scripts/limpar-dados-de-teste.mjs --apagar.',
+    )
+  }
+})
 
 describe('RLS — a vitrine mostra, o conteúdo não', () => {
   it('designer enxerga o curso de tráfego na vitrine', async () => {
@@ -735,5 +778,215 @@ describe('criarLixeira(): limpar() reporta falha em vez de engolir erro', () => 
     await db.from('courses').delete().eq('id', curso!.id)
     await db.from('areas').delete().eq('id', areaId)
     await db.auth.admin.deleteUser(donoId)
+  })
+})
+
+// 0007_endurece_funcoes_security_definer.sql, achado 5 (re-revisão):
+// courses_leitura chamava can_manage_course(id), que reconsulta `courses`
+// por id — dentro de INSERT ... RETURNING isso não enxerga a própria linha
+// no mesmo comando, e falhava com 42501 pra todo curso em rascunho (o
+// status padrão). A tarefa 2 desta fase faz exatamente
+// .insert({...}).select('id').single() ao criar um curso — sem este teste,
+// ninguém pegaria a regressão até ela quebrar na tarefa 2.
+describe('RLS — courses_leitura: RETURNING funciona para curso recém-criado em rascunho', () => {
+  it('líder cria curso em rascunho com insert().select().single() e recebe a linha de volta', async () => {
+    const stamp = Date.now()
+    const cliente = await authClient(emailLiderTrafego)
+    const { data, error } = await cliente
+      .from('courses')
+      .insert({
+        title: 'Curso Novo em Rascunho',
+        slug: `curso-novo-rascunho-${stamp}`,
+        area_id: areaTrafego,
+        owner_id: liderId,
+        status: 'draft',
+      })
+      .select('id')
+      .single()
+    expect(error).toBeNull()
+    expect(data?.id).toBeTruthy()
+    if (data) lixeira.curso(data.id)
+  })
+})
+
+// 0007_endurece_funcoes_security_definer.sql, achado 3 (re-revisão):
+// anexos_storage_escrita nunca tinha teste em nenhuma rodada. O risco de
+// acrescentar um "and auth_is_active()" a uma política nunca exercitada não
+// é o lado da negação vazar — é o lado da permissão quebrar sem ninguém
+// notar. A tarefa 4 desta fase (Anexos) depende de upload funcionar.
+describe('RLS — anexos_storage_escrita: upload exige papel + auth_is_active()', () => {
+  it('líder ativo da área sobe objeto com sucesso', async () => {
+    const cliente = await authClient(emailLiderTrafego)
+    const caminho = `${aulaTrafego}/upload-ativo-${Date.now()}.txt`
+    const { error } = await cliente.storage
+      .from('lesson-attachments')
+      .upload(caminho, new Blob(['conteúdo de teste']), { contentType: 'text/plain' })
+    expect(error).toBeNull()
+
+    const { data: objetos } = await db.storage.from('lesson-attachments').list(aulaTrafego)
+    expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(true)
+
+    await db.storage.from('lesson-attachments').remove([caminho])
+  })
+
+  it('líder desativado é recusado no upload', async () => {
+    const stamp = Date.now()
+    const emailLiderStorage = `lider-storage-inativo-${stamp}@gexcorp.com.br`
+    const liderStorageId = await createTestUser({
+      email: emailLiderStorage,
+      fullName: 'Líder Storage Inativo',
+      role: 'leader',
+      areaId: areaTrafego,
+      status: 'inactive',
+    })
+    lixeira.usuario(liderStorageId)
+
+    const cliente = await authClient(emailLiderStorage)
+    const caminho = `${aulaTrafego}/upload-inativo-${stamp}.txt`
+    const { error } = await cliente.storage
+      .from('lesson-attachments')
+      .upload(caminho, new Blob(['conteúdo de teste']), { contentType: 'text/plain' })
+    expect(error).not.toBeNull()
+
+    const { data: objetos } = await db.storage.from('lesson-attachments').list(aulaTrafego)
+    expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(false)
+  })
+})
+
+// 0007_endurece_funcoes_security_definer.sql, achado 3 (re-revisão):
+// perguntas_apaga/respostas_apaga nunca tinham teste em nenhuma rodada.
+describe('RLS — perguntas_apaga/respostas_apaga: autor apaga; estranho não', () => {
+  it('estranho não apaga a pergunta alheia; autor apaga a própria', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data: pergunta, error: erroInsercao } = await comoAlunoTrafego
+      .from('questions')
+      .insert({ lesson_id: aulaTrafego, author_id: alunoTrafegoId, body: 'Pergunta para apagar depois.' })
+      .select('id')
+      .single()
+    expect(erroInsercao).toBeNull()
+
+    const comoDesigner = await authClient(emailDesigner)
+    await comoDesigner.from('questions').delete().eq('id', pergunta!.id)
+    const { data: aindaExiste } = await db.from('questions').select('id').eq('id', pergunta!.id)
+    expect(aindaExiste).toHaveLength(1)
+
+    const { error: erroAutor } = await comoAlunoTrafego.from('questions').delete().eq('id', pergunta!.id)
+    expect(erroAutor).toBeNull()
+    const { data: apagada } = await db.from('questions').select('id').eq('id', pergunta!.id)
+    expect(apagada).toEqual([])
+  })
+
+  it('estranho não apaga a resposta alheia; autor apaga a própria', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data: pergunta } = await comoAlunoTrafego
+      .from('questions')
+      .insert({ lesson_id: aulaTrafego, author_id: alunoTrafegoId, body: 'Pergunta base para resposta.' })
+      .select('id')
+      .single()
+
+    const { data: resposta, error: erroResposta } = await comoAlunoTrafego
+      .from('answers')
+      .insert({ question_id: pergunta!.id, author_id: alunoTrafegoId, body: 'Resposta para apagar depois.' })
+      .select('id')
+      .single()
+    expect(erroResposta).toBeNull()
+
+    const comoDesigner = await authClient(emailDesigner)
+    await comoDesigner.from('answers').delete().eq('id', resposta!.id)
+    const { data: aindaExiste } = await db.from('answers').select('id').eq('id', resposta!.id)
+    expect(aindaExiste).toHaveLength(1)
+
+    const { error: erroAutor } = await comoAlunoTrafego.from('answers').delete().eq('id', resposta!.id)
+    expect(erroAutor).toBeNull()
+    const { data: apagada } = await db.from('answers').select('id').eq('id', resposta!.id)
+    expect(apagada).toEqual([])
+  })
+})
+
+// 0007_endurece_funcoes_security_definer.sql, achado 4 (re-revisão):
+// is_pinned/resolved_at são sinais de moderação — a spec reserva ao líder.
+// O autor conseguia se autofixar e se autorresolver antes desta correção.
+describe('RLS — perguntas_edita: is_pinned/resolved_at travados pro autor, livres pra quem gerencia', () => {
+  it('autor NÃO fixa nem resolve a própria pergunta; líder consegue', async () => {
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data: pergunta, error: erroInsercao } = await comoAlunoTrafego
+      .from('questions')
+      .insert({ lesson_id: aulaTrafego, author_id: alunoTrafegoId, body: 'Pergunta de moderação.' })
+      .select('id')
+      .single()
+    expect(erroInsercao).toBeNull()
+
+    const { error: erroAutorPin } = await comoAlunoTrafego
+      .from('questions')
+      .update({ is_pinned: true })
+      .eq('id', pergunta!.id)
+    expect(erroAutorPin?.code).toBe('42501')
+
+    const { error: erroAutorResolve } = await comoAlunoTrafego
+      .from('questions')
+      .update({ resolved_at: new Date().toISOString() })
+      .eq('id', pergunta!.id)
+    expect(erroAutorResolve?.code).toBe('42501')
+
+    const { data: aindaIntacta } = await db
+      .from('questions')
+      .select('is_pinned, resolved_at')
+      .eq('id', pergunta!.id)
+      .single()
+    expect(aindaIntacta!.is_pinned).toBe(false)
+    expect(aindaIntacta!.resolved_at).toBeNull()
+
+    // Controle: sem isto, os dois testes acima só provariam "todo UPDATE de
+    // is_pinned/resolved_at é barrado" — não que é o AUTOR especificamente
+    // que fica de fora. Quem gerencia o curso da aula continua livre.
+    const comoLider = await authClient(emailLiderTrafego)
+    const { error: erroLider } = await comoLider
+      .from('questions')
+      .update({ is_pinned: true })
+      .eq('id', pergunta!.id)
+    expect(erroLider).toBeNull()
+
+    const { data: depoisDoLider } = await db.from('questions').select('is_pinned').eq('id', pergunta!.id).single()
+    expect(depoisDoLider!.is_pinned).toBe(true)
+  })
+})
+
+// 0007_endurece_funcoes_security_definer.sql, achado 1 (re-revisão):
+// pergunta_mantem_chaves/resposta_mantem_chaves tinham o mesmo furo que
+// contar_aulas_publicadas (0005) tinha antes de ser corrigida: security
+// definer, argumentos controlados por quem chama, sem revoke de EXECUTE —
+// um POST anônimo respondia uma pergunta sobre `questions`/`answers` com
+// RLS completamente ignorado.
+describe('RLS — pergunta_mantem_chaves/resposta_mantem_chaves: EXECUTE revogado de anon/PUBLIC', () => {
+  it('cliente anônimo não consegue chamar pergunta_mantem_chaves', async () => {
+    const anon = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      { auth: { persistSession: false } },
+    )
+    const { data, error } = await anon.rpc('pergunta_mantem_chaves', {
+      p_id: perguntaTrafego,
+      p_lesson_id: aulaTrafego,
+      p_author_id: alunoTrafegoId,
+      p_is_pinned: false,
+      p_resolved_at: null,
+    })
+    expect(error?.code).toBe('42501')
+    expect(data).toBeNull()
+  })
+
+  it('cliente anônimo não consegue chamar resposta_mantem_chaves', async () => {
+    const anon = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      { auth: { persistSession: false } },
+    )
+    const { data, error } = await anon.rpc('resposta_mantem_chaves', {
+      p_id: '00000000-0000-0000-0000-000000000000',
+      p_question_id: perguntaTrafego,
+      p_author_id: alunoTrafegoId,
+    })
+    expect(error?.code).toBe('42501')
+    expect(data).toBeNull()
   })
 })
