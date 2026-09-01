@@ -56,6 +56,12 @@ Valem as mesmas restrições da fase 1, repetidas aqui porque cada tarefa é lid
 - **Nenhum HTML fornecido por usuário é renderizado.** Do snippet do VTurb extraem-se apenas identificadores; o embed é montado pela aplicação.
 - Anexos: máximo **50 MB**; tipos aceitos PDF, DOCX, XLSX, PPTX, CSV, TXT, ZIP, PNG, JPG. Download **somente** por link assinado de **60 segundos**.
 - RLS habilitado em todas as tabelas.
+- **Todo teste de banco limpa o que criou.** As suítes rodam contra o projeto
+  Supabase de verdade — o mesmo que os líderes usam. Na fase 1 elas deixaram 80
+  usuários e 44 áreas para trás, que precisaram ser varridos à mão. Cada arquivo
+  de teste registra os ids que cria e os remove num `afterAll`. O carimbo de
+  `Date.now()` continua obrigatório para evitar colisão entre execuções, mas ele
+  não substitui a limpeza.
 - Interface em pt-BR. TypeScript `strict`, sem `any`.
 
 ---
@@ -799,7 +805,52 @@ export default async function EditarCursoPage({ params }: { params: Promise<{ id
 }
 ```
 
-- [ ] **Step 4: Escrever o teste de integração dos cursos**
+- [ ] **Step 4: Criar o helper de limpeza e aplicá-lo aos testes existentes**
+
+Antes de acrescentar mais um arquivo de teste de banco, feche a torneira. Os três
+arquivos da fase 1 (`schema.test.ts`, `areas.test.ts`, `people.test.ts`) criam
+usuários, áreas e cursos no projeto real e não removem nada.
+
+Acrescente a `tests/db/client.ts`:
+
+```typescript
+/**
+ * Acumula os ids criados por um arquivo de teste e os remove no fim.
+ *
+ * Os testes rodam contra o projeto Supabase de verdade — o mesmo que os líderes
+ * usam. Sem isso, cada execução deixa dezenas de usuários e áreas para trás.
+ * A ordem de remoção importa: cursos antes de áreas (`courses.area_id` é
+ * ON DELETE RESTRICT) e usuários por último (apagar `auth.users` derruba o
+ * perfil em cascata).
+ */
+export function criarLixeira() {
+  const cursos: string[] = []
+  const areas: string[] = []
+  const usuarios: string[] = []
+
+  return {
+    curso: (id: string) => cursos.push(id),
+    area: (id: string) => areas.push(id),
+    usuario: (id: string) => usuarios.push(id),
+    async limpar() {
+      const db = adminClient()
+      for (const id of cursos) await db.from('courses').delete().eq('id', id)
+      for (const id of areas) await db.from('areas').delete().eq('id', id)
+      for (const id of usuarios) await db.auth.admin.deleteUser(id)
+    },
+  }
+}
+```
+
+Em cada arquivo de teste de banco — os três existentes e o que você cria no
+próximo passo — instancie a lixeira, registre cada fixture logo depois de criá-la,
+e chame `afterAll(() => lixeira.limpar())`.
+
+Confirme que funcionou: rode `npm run test:db` duas vezes seguidas e verifique com
+`node scripts/limpar-dados-de-teste.mjs` (a simulação) que a contagem de perfis e
+áreas de teste voltou a zero nas duas vezes.
+
+- [ ] **Step 5: Escrever o teste de integração dos cursos**
 
 Crie `tests/db/courses.test.ts`:
 
@@ -924,12 +975,12 @@ describe('cursos', () => {
 })
 ```
 
-- [ ] **Step 5: Rodar tudo**
+- [ ] **Step 6: Rodar tudo**
 
 Run: `npm test && npm run test:db && npm run typecheck && npm run build`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add -A
