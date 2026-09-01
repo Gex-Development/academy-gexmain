@@ -150,6 +150,35 @@ export function paraForumQuestion(
   }
 }
 
+// --- Destinatários de e-mail (src/server/forum.ts#askQuestion/answerQuestion) ---
+//
+// A revisão de fase 3 apontou que nada, em nenhum nível, verificava PARA
+// QUEM os e-mails do fórum vão — só que o envio nunca derruba a ação e que o
+// corpo é escapado. É exatamente aí que o achado do curso sem área (a trilha
+// de onboarding) se escondeu por sete tarefas: a consulta que erra o
+// destinatário não quebra nada visível, só fica muda. Estas são as únicas
+// linhas da fase que tiram conteúdo de DENTRO do produto (corpo da pergunta,
+// corpo da resposta) e o põem num canal fora dele — por isso a decisão
+// (quem recebe, quem fica de fora) vira função pura e testável em vez de
+// ficar embutida na action.
+
+/**
+ * Quem recebe o e-mail de uma dúvida nova ou de uma resposta: os
+ * candidatos (líderes da área, ou admins quando não há área/líder ativo —
+ * ver askQuestion; ou o autor da pergunta, para answerQuestion) menos a
+ * própria pessoa que praticou a ação — comparado por ID, nunca por e-mail
+ * (e-mail é o campo mais mutável do perfil; perfil.ts permite trocar o
+ * próprio). Serve às duas actions: para uma resposta, `candidatos` chega
+ * com no máximo um elemento (o autor da pergunta) e `autorId` é quem está
+ * respondendo — a mesma exclusão "nunca a própria pessoa" vale para as duas.
+ */
+export function destinatariosDaDuvida(
+  candidatos: { id: string; email: string }[],
+  autorId: string,
+): string[] {
+  return candidatos.filter((c) => c.id !== autorId).map((c) => c.email)
+}
+
 // --- Fila de dúvidas do líder (src/server/forum.ts#listPendingQuestions) ---
 //
 // Mesmo motivo de tudo acima: listPendingQuestions mora num módulo

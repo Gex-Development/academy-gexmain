@@ -8,6 +8,7 @@ import { excedeuLimite, JANELA_MINUTOS } from '@/lib/forum/rate-limit'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import {
+  destinatariosDaDuvida,
   paraForumQuestion,
   paraPendingQuestion,
   pertenceAFilaDoLider,
@@ -263,10 +264,10 @@ export async function askQuestion(
       candidatos = admins ?? []
     }
 
-    // Exclusão por id, não por e-mail: e-mail é o campo mais mutável do
-    // perfil (perfil.ts permite trocar o próprio), e comparar por id é
-    // exatamente o dado que já temos em mãos (ctx.user.id).
-    const destinatarios = candidatos.filter((c) => c.id !== ctx.user.id).map((c) => c.email)
+    // A decisão em si (candidatos menos o próprio autor, por id) é
+    // destinatariosDaDuvida, em forum-query.ts — pura e testada em
+    // forum-query.test.ts; usada aqui para o teste cobrir o caminho real.
+    const destinatarios = destinatariosDaDuvida(candidatos, ctx.user.id)
     if (destinatarios.length > 0) {
       const conteudo = novaDuvidaEmail({
         alunoNome: ctx.user.fullName,
@@ -321,15 +322,20 @@ export async function answerQuestion(
 
     // Avisa quem perguntou — nunca a própria pessoa, quando ela responde à
     // própria pergunta (ex.: um líder complementando a própria dúvida).
+    // Mesma decisão pura de askQuestion (destinatariosDaDuvida, em
+    // forum-query.ts): aqui `candidatos` tem no máximo um elemento (o autor
+    // da pergunta) e `autorId` é quem está respondendo.
     const autorPergunta = pergunta.profiles as unknown as { email: string; full_name: string } | null
-    if (autorPergunta?.email && pergunta.author_id !== ctx.user.id) {
+    const candidatos = autorPergunta?.email ? [{ id: pergunta.author_id, email: autorPergunta.email }] : []
+    const destinatarios = destinatariosDaDuvida(candidatos, ctx.user.id)
+    if (destinatarios.length > 0) {
       const conteudo = respostaDuvidaEmail({
         professorNome: ctx.user.fullName,
         aulaTitulo: ctx.lessonTitle,
         resposta: parsed.data.body,
         url: `${process.env.NEXT_PUBLIC_SITE_URL}/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`,
       })
-      await sendEmail({ to: autorPergunta.email, ...conteudo })
+      await sendEmail({ to: destinatarios, ...conteudo })
     }
 
     revalidatePath(`/curso/${ctx.courseSlug}/aula/${ctx.lessonSlug}`)

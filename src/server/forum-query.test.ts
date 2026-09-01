@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  destinatariosDaDuvida,
   paraForumQuestion,
   paraPendingQuestion,
   pertenceAFilaDoLider,
@@ -206,6 +207,42 @@ describe('paraForumQuestion — selo, canEdit e canModerate a partir de uma linh
       p,
     )
     expect(comoTerceiro.answers[0]!.canEdit).toBe(false)
+  })
+})
+
+describe('destinatariosDaDuvida — quem recebe o e-mail de uma dúvida nova ou de uma resposta', () => {
+  it('o autor nunca recebe o próprio texto de volta', () => {
+    const candidatos = [{ id: 'autor-1', email: 'autor@gexcorp.com.br' }]
+    expect(destinatariosDaDuvida(candidatos, 'autor-1')).toEqual([])
+  })
+
+  it('um candidato com o MESMO e-mail do autor mas id diferente ainda recebe — a exclusão é por id, não por e-mail', () => {
+    // Guarda contra a implementação errada: comparar por e-mail excluiria
+    // este candidato só porque o texto do e-mail bate, mesmo sendo outra
+    // pessoa (e-mail é o campo mais mutável do perfil).
+    const candidatos = [{ id: 'lider-1', email: 'mesmo@gexcorp.com.br' }]
+    expect(destinatariosDaDuvida(candidatos, 'autor-1')).toEqual(['mesmo@gexcorp.com.br'])
+  })
+
+  it('lista de candidatos vazia devolve vazio', () => {
+    expect(destinatariosDaDuvida([], 'autor-1')).toEqual([])
+  })
+
+  it('mistura: só o autor fica de fora, os demais candidatos permanecem', () => {
+    const candidatos = [
+      { id: 'autor-1', email: 'autor@gexcorp.com.br' },
+      { id: 'lider-1', email: 'lider@gexcorp.com.br' },
+      { id: 'lider-2', email: 'lider2@gexcorp.com.br' },
+    ]
+    expect(destinatariosDaDuvida(candidatos, 'autor-1')).toEqual(['lider@gexcorp.com.br', 'lider2@gexcorp.com.br'])
+  })
+
+  it('caso de answerQuestion: candidato único (autor da pergunta), excluído quando é a própria pessoa respondendo', () => {
+    const autorDaPergunta = [{ id: 'pessoa-1', email: 'pessoa@gexcorp.com.br' }]
+    // Alguém complementando a própria pergunta: não recebe e-mail dela mesma.
+    expect(destinatariosDaDuvida(autorDaPergunta, 'pessoa-1')).toEqual([])
+    // Outra pessoa respondendo: o autor da pergunta recebe.
+    expect(destinatariosDaDuvida(autorDaPergunta, 'outra-pessoa')).toEqual(['pessoa@gexcorp.com.br'])
   })
 })
 
