@@ -40,9 +40,27 @@ Preencha `.env.local` com os valores do painel do Supabase (Project Settings):
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run build` | Build de produção do Next.js |
 | `npm run db:push` | Aplica `supabase/migrations/` pendentes no banco remoto de desenvolvimento |
-| `npm run db:reset` | Recria o banco do zero a partir das migrations |
+| `npm run db:reset -- --apagar <ref>` | Recria o banco do zero a partir das migrations. **Destrutivo** — exige o ref do projeto digitado à mão |
 
-> **`npm run db:reset` apaga todos os dados do banco remoto de desenvolvimento.** Esse banco é **compartilhado** por todo mundo que está desenvolvendo — não é uma instância local e descartável. Rodar `db:reset` derruba os dados de qualquer outra pessoa trabalhando no projeto no momento. Avise o time antes de rodar, ou prefira `db:push` quando o objetivo é só aplicar uma migration nova.
+> ### ⛔ `db:reset` apaga o banco inteiro
+>
+> A GEX Academy usa **um único projeto Supabase**: o mesmo banco onde
+> desenvolvemos é o que vai receber os cursos e as aulas que os líderes subirem.
+> Não existe ambiente descartável separado.
+>
+> Por isso `db:reset` só roda com o ref do projeto digitado à mão:
+>
+> ```bash
+> npm run db:reset -- --apagar <ref-do-projeto>
+> ```
+>
+> `scripts/db.mjs` recusa o comando sem essa confirmação. A trava existe porque
+> o reset não tem desfazer: ele derruba o schema e recria a partir das
+> migrations, levando junto todo curso, aula, anexo e dúvida que existirem.
+>
+> **Para aplicar uma migration nova, use `npm run db:push`.** Ele é aditivo,
+> não destrói nada e não passa pela trava. Na prática, `db:reset` só se
+> justifica enquanto o banco tiver apenas dados de teste.
 
 Note que `npm run db:types` **não** está listado como algo para rodar neste ambiente: ele exige um runtime de contêiner (Docker) indisponível aqui, e o arquivo `src/lib/supabase/database.types.ts` é mantido **à mão** — ver o comentário no topo desse arquivo.
 

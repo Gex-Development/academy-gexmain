@@ -28,6 +28,45 @@ const dbUrl = `postgresql://postgres:${encodeURIComponent(senha)}@db.${ref}.supa
 // arquivo se o comando terminou com sucesso E a saída realmente parece
 // TypeScript gerado — senão o arquivo existente fica intocado.
 const args = process.argv.slice(2)
+
+// --- Trava do db:reset -----------------------------------------------------
+// `supabase db reset` DERRUBA E RECRIA o banco inteiro a partir das migrations.
+//
+// Este projeto tem um único ambiente Supabase: o mesmo banco onde desenvolvemos
+// é o que vai receber os cursos e as aulas que os líderes subirem. Um reset
+// acidental — memória muscular, autocompletar do shell, uma sessão futura que
+// não conhece este contexto — apaga o trabalho deles sem aviso e sem desfazer.
+//
+// Por isso o reset exige que quem o roda digite o ref do projeto à mão. Não é
+// burocracia: é a diferença entre um comando que se digita sem pensar e um que
+// obriga a olhar para qual banco está prestes a ser destruído.
+//
+//   npm run db:reset -- --apagar <ref>
+//
+// Aplicar migrations novas NÃO passa por aqui: `npm run db:push` é aditivo e
+// não destrói nada.
+const ehReset = args[0] === 'db' && args[1] === 'reset'
+if (ehReset) {
+  const indiceApagar = args.indexOf('--apagar')
+  const refConfirmado = indiceApagar === -1 ? null : args[indiceApagar + 1]
+
+  if (refConfirmado !== ref) {
+    console.error(
+      `\n⛔ "db reset" apaga e recria TODO o banco do projeto ${ref}.\n\n` +
+        (refConfirmado
+          ? `Você confirmou "${refConfirmado}", que não é o projeto configurado.\n\n`
+          : 'Confirmação ausente.\n\n') +
+        'Se é isso mesmo, digite o ref do projeto à mão:\n\n' +
+        `  npm run db:reset -- --apagar ${ref}\n\n` +
+        'Para apenas aplicar migrations novas, sem destruir nada:\n\n' +
+        '  npm run db:push\n',
+    )
+    process.exit(1)
+  }
+
+  args.splice(indiceApagar, 2)
+}
+
 const outIndex = args.indexOf('--out')
 let outPath = null
 if (outIndex !== -1) {
