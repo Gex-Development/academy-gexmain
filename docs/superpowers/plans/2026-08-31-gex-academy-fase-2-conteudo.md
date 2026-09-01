@@ -2307,12 +2307,21 @@ export async function getCatalog(): Promise<Catalog> {
     supabase
       .from('courses')
       .select(
-        'id, slug, title, description, cover_url, status, is_onboarding, area_id, position, areas(name, color, position), lessons(id, status)',
+        'id, slug, title, description, cover_url, status, is_onboarding, area_id, position, areas(name, color, position)',
       )
       .eq('status', 'published'),
     supabase.from('course_access').select('course_id').eq('user_id', user.id),
     supabase.from('access_requests').select('course_id').eq('user_id', user.id).eq('status', 'pending'),
   ])
+
+  // A contagem de aulas vem de uma função SECURITY DEFINER, não de um join.
+  // RLS é por LINHA: uma política que deixasse contar as aulas de um curso
+  // bloqueado deixaria ler o `video_ref` junto — e para vídeo não listado do
+  // YouTube o ref é o acesso. A função devolve só o número.
+  const { data: contagens } = await supabase.rpc('contar_aulas_publicadas')
+  const aulasPorCurso = new Map(
+    (contagens ?? []).map((linha) => [linha.course_id, Number(linha.total)]),
+  )
 
   const liberados = new Set((liberacoes ?? []).map((l) => l.course_id))
   const pendentes = new Set((solicitacoes ?? []).map((s) => s.course_id))
@@ -2328,7 +2337,6 @@ export async function getCatalog(): Promise<Catalog> {
     area_id: string | null
     position: number
     areas: { name: string; color: string | null; position: number } | null
-    lessons: { id: string; status: string }[]
   }
 
   const items: CatalogItem[] = ((cursos ?? []) as unknown as Linha[]).map((row) => ({
@@ -2340,7 +2348,7 @@ export async function getCatalog(): Promise<Catalog> {
     areaName: row.areas?.name ?? null,
     areaColor: row.areas?.color ?? null,
     isOnboarding: row.is_onboarding,
-    lessonCount: row.lessons.filter((l) => l.status === 'published').length,
+    lessonCount: aulasPorCurso.get(row.id) ?? 0,
     access: canAccessCourse(
       user,
       {
@@ -2374,7 +2382,23 @@ export async function getCatalog(): Promise<Catalog> {
 }
 ```
 
-- [ ] **Step 2: Criar o card do curso**
+- [ ] **Step 2: Registrar a função de contagem no arquivo de tipos**
+
+`src/lib/supabase/database.types.ts` é mantido à mão (o gerador exige um runtime
+de container indisponível aqui). O `supabase.rpc('contar_aulas_publicadas')` só
+compila se a função estiver declarada lá. Acrescente ao bloco `Functions` do
+schema `public`:
+
+```typescript
+      contar_aulas_publicadas: {
+        Args: Record<PropertyKey, never>
+        Returns: { course_id: string; total: number }[]
+      }
+```
+
+Confirme com `npm run typecheck` — sem isso o `rpc()` acusa nome desconhecido.
+
+- [ ] **Step 3: Criar o card do curso**
 
 Crie `src/components/catalog/course-card.tsx`:
 
@@ -2433,7 +2457,7 @@ export function CourseCard({ item }: { item: CatalogItem }) {
 
 O card bloqueado continua sendo um link: a página do curso mostra a descrição e, na fase 3, o botão de solicitar acesso. Ela é que barra o conteúdo.
 
-- [ ] **Step 3: Montar a home**
+- [ ] **Step 4: Montar a home**
 
 Substitua `src/app/(app)/page.tsx`:
 
@@ -2487,12 +2511,12 @@ export default async function HomePage() {
 }
 ```
 
-- [ ] **Step 4: Rodar tudo**
+- [ ] **Step 5: Rodar tudo**
 
 Run: `npm test && npm run typecheck && npm run build`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add -A

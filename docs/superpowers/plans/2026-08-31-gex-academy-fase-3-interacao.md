@@ -337,8 +337,10 @@ for (const linha of concluidas ?? []) {
 // e no map que monta cada CatalogItem, acrescente o campo:
 //   progress: buildProgress(
 //     concluidasPorCurso.get(row.id) ?? 0,
-//     row.lessons.filter((l) => l.status === 'published').length,
+//     aulasPorCurso.get(row.id) ?? 0,
 //   ),
+// (`aulasPorCurso` é o mapa que getCatalog já monta a partir da RPC
+//  contar_aulas_publicadas — não volte a contar linhas de `lessons`.)
 ```
 
 Em `src/components/catalog/course-card.tsx`, acrescente a barra abaixo do parágrafo de metadados, visível só quando a pessoa tem acesso e o curso tem aulas:
