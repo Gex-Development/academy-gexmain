@@ -275,19 +275,29 @@ export async function askQuestion(
       candidatos = lideres ?? []
     }
 
-    if (candidatos.length === 0) {
+    // A decisão em si (candidatos menos o próprio autor, por id) é
+    // destinatariosDaDuvida, em forum-query.ts — pura e testada em
+    // forum-query.test.ts; usada aqui para o teste cobrir o caminho real.
+    let destinatarios = destinatariosDaDuvida(candidatos, ctx.user.id)
+
+    // Cai nos admins ativos quando NINGUÉM sobra depois de excluir o autor
+    // — não quando `candidatos` já chegava vazio ANTES dessa exclusão
+    // (achado da rodada 2 da revisão): testar antes deixava um líder que é
+    // o único ativo da própria área, perguntando na própria área, sem
+    // aviso nenhum — `candidatos` tinha 1 elemento (ele mesmo), o fallback
+    // nunca disparava, e a exclusão de autor zerava `destinatarios` sem
+    // ninguém para substituí-lo. Testar DEPOIS cobre esse caso e os dois
+    // originais (sem área, ou área sem líder ativo algum) com a mesma
+    // condição.
+    if (destinatarios.length === 0) {
       const { data: admins } = await admin
         .from('profiles')
         .select('id, email')
         .eq('role', 'admin')
         .eq('status', 'active')
-      candidatos = admins ?? []
+      destinatarios = destinatariosDaDuvida(admins ?? [], ctx.user.id)
     }
 
-    // A decisão em si (candidatos menos o próprio autor, por id) é
-    // destinatariosDaDuvida, em forum-query.ts — pura e testada em
-    // forum-query.test.ts; usada aqui para o teste cobrir o caminho real.
-    const destinatarios = destinatariosDaDuvida(candidatos, ctx.user.id)
     if (destinatarios.length > 0) {
       const conteudo = novaDuvidaEmail({
         alunoNome: ctx.user.fullName,
