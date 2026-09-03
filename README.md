@@ -75,7 +75,10 @@ node scripts/limpar-dados-de-teste.mjs --apagar   # apaga
 ```
 
 O critério é o carimbo de 13 dígitos, **nunca o domínio do e-mail**:
-`@gexcorp.com.br` é o domínio real da empresa e as fixtures também o usam.
+`@gexcorp.com.br` aparece nas fixtures por herança: era o domínio previsto quando
+a suíte foi escrita. O produto é publicado em `academy.gexmain.com` e envia de
+`@gexmain.com`. Nada disso importa para a limpeza: o que identifica uma fixture é
+o carimbo de 13 dígitos no e-mail ou no slug, nunca o domínio.
 Apagar por domínio removeria gente de verdade.
 
 Rode a simulação antes de apagar e confira a lista de preservados.
