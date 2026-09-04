@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { CourseCard } from '@/components/catalog/course-card'
+import { listAreas } from '@/server/areas'
 import { getCatalog } from '@/server/catalog'
 import { selecionarEmAndamento } from '@/server/vitrine-query'
 
@@ -21,16 +22,28 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
   const catalog = await getCatalog()
 
   const grupo = catalog.grupos.find((g) => g.areaSlug === slug)
-  if (!grupo) notFound()
 
-  const emAndamento = selecionarEmAndamento(grupo.items)
+  // Uma área que existe mas ainda não tem curso publicado não aparece em
+  // catalog.grupos — o catálogo parte de cursos. Antes isso caía em
+  // notFound(), o que transformava toda área recém-criada num 404 assim que
+  // ela virou clicável na home. Só quando não há grupo é que consultamos a
+  // lista de áreas: no caminho comum, com curso, não há consulta extra.
+  const areaVazia = grupo ? null : (await listAreas()).find((a) => a.slug === slug)
+  if (!grupo && !areaVazia) notFound()
+
+  const nome = grupo?.areaName ?? areaVazia!.name
+  const capaDaArea = grupo?.areaCoverUrl ?? areaVazia!.coverUrl
+  const corDaArea = grupo?.areaColor ?? areaVazia!.color
+  const itens = grupo?.items ?? []
+
+  const emAndamento = selecionarEmAndamento(itens)
 
   // Terceiro degrau da reserva de capa — mesmo raciocínio de area-card.tsx:
   // sem imagem e sem cor, bg-capa-fundo sozinho (#221f20 sobre #131213 no
   // escuro) dá 1,14:1, quase invisível. from-azul/to-ciano são tokens fixos
   // (não invertem por tema), então o gradiente fica igual nos dois temas,
   // do mesmo jeito que capa-fundo.
-  const semReserva = !grupo.areaCoverUrl && !grupo.areaColor
+  const semReserva = !capaDaArea && !corDaArea
 
   return (
     <div className="flex flex-col gap-8">
@@ -38,12 +51,12 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
         className={`relative overflow-hidden rounded-card border border-borda ${
           semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
         }`}
-        style={grupo.areaColor && !grupo.areaCoverUrl ? { backgroundColor: grupo.areaColor } : undefined}
+        style={corDaArea && !capaDaArea ? { backgroundColor: corDaArea } : undefined}
       >
-        {grupo.areaCoverUrl && (
+        {capaDaArea && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={grupo.areaCoverUrl}
+            src={capaDaArea}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
           />
@@ -63,9 +76,11 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
         */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/50 to-black/20" />
         <div className="relative flex min-h-36 flex-col justify-end p-6">
-          <h1 className="text-2xl font-bold leading-tight text-white">{grupo.areaName}</h1>
+          <h1 className="text-2xl font-bold leading-tight text-white">{nome}</h1>
           <p className="mt-1 text-sm text-white/75">
-            {grupo.items.length} {grupo.items.length === 1 ? 'curso' : 'cursos'}
+            {itens.length === 0
+              ? 'Nenhum curso ainda'
+              : `${itens.length} ${itens.length === 1 ? 'curso' : 'cursos'}`}
           </p>
         </div>
       </section>
@@ -87,11 +102,18 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
           Todos os cursos
         </h2>
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {grupo.items.map((item) => (
-            <CourseCard key={item.id} item={item} />
-          ))}
-        </ul>
+        {itens.length === 0 ? (
+          <p className="text-sm text-texto-suave">
+            Nenhum curso publicado nesta área ainda. Assim que o líder publicar o primeiro, ele
+            aparece aqui.
+          </p>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {itens.map((item) => (
+              <CourseCard key={item.id} item={item} />
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   )

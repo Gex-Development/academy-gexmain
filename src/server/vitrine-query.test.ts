@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { AreaRow } from './areas'
 import type { Catalog, CatalogItem } from './catalog-query'
 import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
 
@@ -37,6 +38,19 @@ function grupo(over: Partial<Catalog['grupos'][number]> = {}): Catalog['grupos']
     areaCoverUrl: 'https://exemplo.test/copy.png',
     areaColor: '#004EAC',
     items: [item()],
+    ...over,
+  }
+}
+
+function areaRow(over: Partial<AreaRow> = {}): AreaRow {
+  return {
+    id: 'a1',
+    name: 'Copy',
+    slug: 'copy',
+    description: null,
+    color: '#004EAC',
+    position: 0,
+    coverUrl: 'https://exemplo.test/copy.png',
     ...over,
   }
 }
@@ -106,6 +120,68 @@ describe('montarVitrine', () => {
     const vitrine = montarVitrine(catalogo([grupo({ areaName: 'Outros', areaSlug: null })]))
 
     expect(vitrine).toEqual([])
+  })
+
+  // A partir daqui: as áreas SEM curso publicado. O catálogo não as conhece
+  // (ele parte de cursos), então elas entram pela lista de áreas.
+  it('área sem curso nenhum aparece na vitrine, com a capa e a cor dela', () => {
+    const vitrine = montarVitrine(catalogo([]), [areaRow()])
+
+    expect(vitrine).toHaveLength(1)
+    expect(vitrine[0].name).toBe('Copy')
+    expect(vitrine[0].href).toBe('/area/copy')
+    expect(vitrine[0].coverUrl).toBe('https://exemplo.test/copy.png')
+    expect(vitrine[0].color).toBe('#004EAC')
+    expect(vitrine[0].courseCount).toBe(0)
+  })
+
+  it('área vazia NUNCA fica bloqueada — sem curso não há o que proteger, nem o que liberar', () => {
+    // Sem esta regra, `items.every(...)` sobre lista vazia é `true` por
+    // vacuidade e a área apareceria acinzentada com "sem acesso",
+    // convidando a um pedido de acesso que não libera nada.
+    const vitrine = montarVitrine(catalogo([]), [areaRow()])
+
+    expect(vitrine[0].bloqueada).toBe(false)
+  })
+
+  it('área que já tem curso não é duplicada pela lista de áreas', () => {
+    const vitrine = montarVitrine(catalogo([grupo()]), [areaRow()])
+
+    expect(vitrine).toHaveLength(1)
+    expect(vitrine[0].courseCount).toBe(1)
+  })
+
+  it('as vazias vêm depois das que têm curso, para a home abrir com conteúdo', () => {
+    const vitrine = montarVitrine(catalogo([grupo({ groupKey: 'a2', areaName: 'Tráfego', areaSlug: 'trafego' })]), [
+      areaRow({ id: 'a1', name: 'Copy', slug: 'copy' }),
+      areaRow({ id: 'a2', name: 'Tráfego', slug: 'trafego' }),
+    ])
+
+    expect(vitrine.map((a) => a.name)).toEqual(['Tráfego', 'Copy'])
+  })
+
+  it('a área vazia é casada por id, não por slug — groupKey É o areaId', () => {
+    // Se o casamento fosse por nome, duas áreas de nome igual (o banco não
+    // impede) colidiriam; se fosse por slug, dependeria de um campo que o
+    // grupo pode ter nulo.
+    const vitrine = montarVitrine(catalogo([grupo({ groupKey: 'a1', areaSlug: 'copy-antigo' })]), [
+      areaRow({ id: 'a1', slug: 'copy' }),
+    ])
+
+    expect(vitrine).toHaveLength(1)
+    expect(vitrine[0].href).toBe('/area/copy-antigo')
+  })
+
+  it('sem lista de áreas, o comportamento é o de antes — só quem tem curso', () => {
+    const vitrine = montarVitrine(catalogo([grupo()]))
+
+    expect(vitrine).toHaveLength(1)
+  })
+
+  it('a trilha inicial continua vindo primeiro, antes das áreas vazias', () => {
+    const vitrine = montarVitrine(catalogo([], item({ isOnboarding: true, title: 'Boas-vindas' })), [areaRow()])
+
+    expect(vitrine.map((a) => a.name)).toEqual(['Boas-vindas', 'Copy'])
   })
 })
 

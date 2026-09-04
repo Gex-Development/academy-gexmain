@@ -72,7 +72,12 @@ export function AreaCard({ area }: { area: AreaVitrine }) {
             <p className="mt-1 text-xs text-white/75">
               {area.isOnboarding
                 ? `Trilha inicial · ${area.courseCount} ${area.courseCount === 1 ? 'aula' : 'aulas'}`
-                : `${area.courseCount} ${area.courseCount === 1 ? 'curso' : 'cursos'}`}
+                : // "0 cursos" é sintaticamente certo e ruim de ler: parece
+                  // defeito, não área nova. A área existe, só não tem
+                  // conteúdo ainda — e é isso que a legenda diz.
+                  area.courseCount === 0
+                  ? 'Nenhum curso ainda'
+                  : `${area.courseCount} ${area.courseCount === 1 ? 'curso' : 'cursos'}`}
               {area.bloqueada && ' · sem acesso'}
             </p>
           </div>
