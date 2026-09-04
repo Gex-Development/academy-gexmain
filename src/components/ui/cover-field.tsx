@@ -122,12 +122,14 @@ export function CoverField({
       confirmForm.set('escopo', escopo)
       confirmForm.set('id', entidadeId)
       confirmForm.set('path', mint.data.path)
-      // `url` aqui ainda é a capa ANTERIOR — só é sobrescrita por setUrl(),
-      // mais abaixo, depois que o servidor confirma o upload novo (e, se for
-      // o caso, apaga o antigo). Vazio quando esta é a primeira capa da
-      // entidade — não há nada para o servidor substituir.
-      if (url) confirmForm.set('previousUrl', url)
 
+      // Confirmar aqui NÃO apaga a capa anterior (`url`, ainda não
+      // sobrescrita neste ponto) — só troca o valor do campo de URL, mais
+      // abaixo, com setUrl(). A capa antiga só é removida do Storage depois
+      // que o formulário for salvo de verdade (updateArea/updateCourse, em
+      // src/server/areas.ts e courses.ts): confirmar o upload não é o mesmo
+      // que salvar, e quem fecha a aba sem salvar não pode deixar o banco
+      // apontando para um objeto que já foi apagado.
       const confirmado = await confirmCapaUpload(null, confirmForm)
       if (!confirmado.ok) {
         setErro(confirmado.error)

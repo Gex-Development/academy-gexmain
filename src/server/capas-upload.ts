@@ -1,14 +1,14 @@
-// Sem 'use server': as duas funções abaixo conversam de verdade com o
-// Storage (mint da URL assinada e verificação do upload direto do
-// navegador), mas não dependem de cookies() — mesmo raciocínio de
+// Sem 'use server': as funções abaixo conversam de verdade com o Storage
+// (mint da URL assinada, verificação do upload direto do navegador, limpeza
+// de capa substituída), mas não dependem de cookies() — mesmo raciocínio de
 // attachments-upload.ts (que por sua vez segue courses-query.ts): o que não
 // precisa de cookies() sai para um módulo à parte, para um teste de banco
 // poder chamar a MESMA função que a action usa, contra o Storage de
 // verdade, sem precisar simular um request Next.js. É por isso, também, que
-// a checagem de prefixo de caminho (mais abaixo, em verifyCapaUpload) mora
-// AQUI, e não em capas.ts: capas.ts é 'use server' e exige cookies() para
-// rodar (getCurrentUser), então nenhum teste de banco alcança o que estiver
-// lá dentro — e essa checagem é exatamente o tipo de regra que precisa de
+// a checagem de prefixo de caminho (em verifyCapaUpload) mora AQUI, e não
+// em capas.ts: capas.ts é 'use server' e exige cookies() para rodar
+// (getCurrentUser), então nenhum teste de banco alcança o que estiver lá
+// dentro — e essa checagem é exatamente o tipo de regra que precisa de
 // teste direto, não só de leitura de código.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
@@ -45,23 +45,10 @@ export async function mintCapaUpload(
 }
 
 /**
- * Devolve o caminho de um objeto do bucket 'capas' a partir da sua URL
- * pública, ou null se a URL não é do nosso bucket (ex.: uma URL colada de
- * fora — essa não é nossa para apagar). getPublicUrl() não tem uma função
- * inversa pronta no SDK; a extração aqui é a mesma string que getPublicUrl
- * produz, só andada de trás para a frente.
- */
-function extrairCaminhoCapa(url: string): string | null {
-  const prefixo = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${CAPA_BUCKET}/`
-  if (!url.startsWith(prefixo)) return null
-  return url.slice(prefixo.length)
-}
-
-/**
  * Verifica o que REALMENTE chegou ao Storage — não o que foi declarado ao
- * mintar — e só então devolve a URL pública. Sem este passo, tirar o upload
- * do servidor teria tirado a validação junto: bastaria declarar "300 KB,
- * PNG" e mandar 200 MB de outra coisa.
+ * mintar — e devolve a URL pública. Sem este passo, tirar o upload do
+ * servidor teria tirado a validação junto: bastaria declarar "300 KB, PNG"
+ * e mandar 200 MB de outra coisa.
  *
  * IMPORTANTE sobre o alcance desta checagem: o `contentType` que `info()`
  * devolve é o cabeçalho que a própria requisição de upload declarou, não uma
@@ -82,49 +69,34 @@ function extrairCaminhoCapa(url: string): string | null {
  * alcança, porque a action exige cookies(). Aqui, puro e testável, é onde
  * ela pertence.
  *
- * Em caso de falha na validação do que chegou, remove o objeto do bucket —
- * mesma lógica de rollback que verifyAndRegisterAttachment já usa para
- * anexos. Capa não tem linha própria no banco (é só uma URL guardada em
- * areas.cover_url ou courses.cover_url, gravada pela action de salvar
+ * Em caso de falha na validação do que chegou, remove o objeto NOVO do
+ * bucket — mesma lógica de rollback que verifyAndRegisterAttachment já usa
+ * para anexos. Capa não tem linha própria no banco (é só uma URL guardada
+ * em areas.cover_url ou courses.cover_url, gravada pela action de salvar
  * área/curso, não por esta função) — por isso não há o caso de "confirmação
  * repetida" que attachments-upload.ts trata via storage_path único: aqui
  * não existe registro para colidir, só o objeto no bucket e a URL pública
  * devolvida.
  *
- * `previousUrl`, se vier preenchido, é a capa que está sendo SUBSTITUÍDA —
- * apagada aqui, depois que a nova já passou em todas as checagens acima
- * (nunca antes: uma substituição que falhasse no meio não pode derrubar a
- * capa antiga que ainda está no ar). Só é removida se (a) for do nosso
- * bucket (extrairCaminhoCapa devolve null para uma URL colada de fora — essa
- * não é nossa para apagar) e (b) pertencer à MESMA pasta escopo/id que
- * acabou de ser verificada: sem essa checagem, quem chama esta função
- * poderia passar a URL pública de OUTRA área/curso como "previousUrl" e usar
- * a troca da própria capa para apagar um objeto que não gerencia. Falha ao
- * remover NUNCA derruba a confirmação — a capa nova já está de pé, que é o
- * que importa; só registra no log e segue, mesma disciplina de
- * "nunca lança" que sendEmail já usa (src/lib/email/send.ts). Isso deixa um
- * objeto órfão eventual no bucket público quando a remoção falha — aceito
- * deliberadamente, pelo mesmo motivo do próximo parágrafo.
- *
- * O que este rollback NÃO cobre — de propósito, não por descuido — é o
- * abandono: alguém escolhe um arquivo, o upload e a confirmação acontecem
- * (a imagem já está no bucket, pública), mas a pessoa fecha a aba ou muda
- * de campo antes de apertar Salvar. Não há "URL anterior" para substituir
- * nesse caso — é a PRIMEIRA capa, não uma troca — então nada aqui a
- * alcança, e ela fica no bucket sem nunca virar cover_url de nada. Resolver
- * isso exigiria uma varredura periódica (comparar objetos do bucket contra
- * os cover_url realmente gravados em areas/courses) — deliberadamente fora
- * do escopo desta função: um caminho de upload não é o lugar para lógica de
- * limpeza em lote, e o produto ainda não tem nenhuma rotina periódica desse
- * tipo. Se o volume de órfãos incomodar algum dia, a resposta é essa
- * varredura, não mais código aqui.
+ * O que esta função NUNCA faz é mexer numa capa ANTERIOR/substituída — nem
+ * mesmo quando `path` é claramente uma troca. Uma versão anterior desta
+ * função tentava: recebia a URL antiga e apagava o objeto correspondente
+ * aqui mesmo, na confirmação. Isso quebrava um caminho real: confirmar um
+ * upload NÃO é o mesmo que salvar uma capa — confirmCapaUpload só devolve a
+ * URL pública, e quem grava `cover_url` é updateArea/updateCourse, no
+ * Salvar, um passo depois, que pode nunca acontecer (alguém confirma o
+ * upload e fecha a aba sem salvar). Apagar a capa antiga NESTE ponto
+ * deixava o banco apontando para um objeto que já não existia mais sempre
+ * que isso acontecesse — capa quebrada, pública, visível para a empresa
+ * inteira, sem conserto. A limpeza da capa substituída mora em
+ * apagarCapaSubstituida, abaixo, chamada só depois que a escrita no banco
+ * já teve sucesso — nunca no passo de confirmar o upload.
  */
 export async function verifyCapaUpload(
   admin: AdminClient,
   escopo: CapaEscopo,
   id: string,
   path: string,
-  previousUrl?: string | null,
 ): Promise<ActionResult<{ url: string }>> {
   const prefixo = `${escopo}/${id}/`
   if (!path.startsWith(prefixo)) return fail('Caminho de upload inválido.')
@@ -141,16 +113,77 @@ export async function verifyCapaUpload(
   }
 
   const { data } = admin.storage.from(CAPA_BUCKET).getPublicUrl(path)
-
-  if (previousUrl) {
-    const caminhoAntigo = extrairCaminhoCapa(previousUrl)
-    if (caminhoAntigo && caminhoAntigo.startsWith(prefixo) && caminhoAntigo !== path) {
-      const { error: erroRemocao } = await admin.storage.from(CAPA_BUCKET).remove([caminhoAntigo])
-      if (erroRemocao) {
-        console.error('[verifyCapaUpload] falha ao remover capa substituída:', caminhoAntigo, erroRemocao)
-      }
-    }
-  }
-
   return ok({ url: data.publicUrl })
+}
+
+/**
+ * Devolve o caminho de um objeto do bucket 'capas' a partir da sua URL
+ * pública, ou null se a URL não é do nosso bucket (ex.: uma URL colada de
+ * fora — essa não é nossa para apagar). getPublicUrl() não tem uma função
+ * inversa pronta no SDK; a extração aqui é a mesma string que getPublicUrl
+ * produz, só andada de trás para a frente.
+ */
+function extrairCaminhoCapa(url: string): string | null {
+  const prefixo = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${CAPA_BUCKET}/`
+  if (!url.startsWith(prefixo)) return null
+  return url.slice(prefixo.length)
+}
+
+/**
+ * Apaga a capa ANTERIOR de uma entidade — chamada por updateArea/
+ * updateCourse, DEPOIS que a gravação da capa NOVA no banco já teve
+ * sucesso. Nunca chamada pelo passo de confirmar upload (verifyCapaUpload,
+ * acima) — ver o porquê no comentário longo lá: um upload confirmado não é
+ * o mesmo que uma capa salva, e apagar cedo demais deixava o banco
+ * apontando para um objeto que já não existia.
+ *
+ * Com a exclusão só acontecendo aqui, o pior cenário de abandono muda de
+ * figura conforme o caso:
+ * - Primeira capa de uma entidade (não havia nada antes): confirmar o
+ *   upload e nunca salvar deixa um objeto órfão no bucket — sempre foi
+ *   assim, aceito desde o desenho original (não há tabela própria para
+ *   rastrear capas, então não tem como o sistema saber que aquele upload
+ *   nunca virou cover_url de nada).
+ * - Substituição (já havia uma capa): confirmar o upload da nova e nunca
+ *   salvar agora TAMBÉM só deixa um objeto órfão — a nova, nunca
+ *   referenciada. A antiga continua no ar, porque esta função só roda
+ *   depois do Salvar ter sucesso, e o Salvar nunca aconteceu.
+ * Nos dois casos o pior resultado é um arquivo a mais no bucket, que
+ * ninguém vê. Nunca mais uma capa quebrada, que todo mundo vê. Se o volume
+ * de órfãos incomodar algum dia, a resposta é uma varredura periódica
+ * (comparar objetos do bucket contra os cover_url realmente gravados em
+ * areas/courses) — deliberadamente fora do escopo desta função.
+ *
+ * Só remove quando: (a) havia uma capa antiga (`urlAntiga` não vazio), (b)
+ * o valor realmente mudou (`urlAntiga !== urlNova` — evita apagar uma URL
+ * que ainda está em uso só porque o formulário foi salvo de novo sem
+ * mudança na capa), (c) a antiga é do NOSSO bucket (extrairCaminhoCapa
+ * devolve null para uma URL colada de fora) e (d) pertence à MESMA pasta
+ * escopo/id da entidade que acabou de ser salva — sem essa última checagem,
+ * um `cover_url` antigo de OUTRA entidade (dado que chega como string,
+ * gravado em algum momento, sem garantia formal de pertencer a quem está
+ * sendo salvo agora) poderia apagar um objeto que esta chamada não tem
+ * relação nenhuma com.
+ *
+ * Nunca lança: falha ao remover só registra no log e segue — a escrita no
+ * banco já aconteceu e é o que importa; mesma disciplina de "nunca lança"
+ * que sendEmail já usa (src/lib/email/send.ts). O resultado de uma falha
+ * aqui é o MESMO órfão aceito acima — só que da capa antiga, não da nova.
+ */
+export async function apagarCapaSubstituida(
+  admin: AdminClient,
+  escopo: CapaEscopo,
+  id: string,
+  urlAntiga: string | null,
+  urlNova: string | null,
+): Promise<void> {
+  if (!urlAntiga || urlAntiga === urlNova) return
+
+  const caminhoAntigo = extrairCaminhoCapa(urlAntiga)
+  if (!caminhoAntigo || !caminhoAntigo.startsWith(`${escopo}/${id}/`)) return
+
+  const { error } = await admin.storage.from(CAPA_BUCKET).remove([caminhoAntigo])
+  if (error) {
+    console.error('[apagarCapaSubstituida] falha ao remover capa substituída:', caminhoAntigo, error)
+  }
 }

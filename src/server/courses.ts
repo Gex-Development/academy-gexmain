@@ -6,7 +6,9 @@ import { canAccessCourse } from '@/lib/access'
 import { assertRole } from '@/lib/auth/guards'
 import { getCurrentUser } from '@/lib/auth/session'
 import { slugify } from '@/lib/slug'
+import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { apagarCapaSubstituida } from '@/server/capas-upload'
 import {
   paraManagedCourse,
   podePublicar,
@@ -149,25 +151,40 @@ export async function updateCourse(
     const id = z.string().uuid().safeParse(formData.get('id'))
     if (!id.success) return { ok: false, error: 'Curso inválido.' }
 
-    // Confirma que este usuário pode editar ESTE curso, não apenas que é líder.
-    if (!(await getManagedCourse(id.data))) {
+    // Confirma que este usuário pode editar ESTE curso, não apenas que é
+    // líder. getManagedCourse já traz coverUrl (SELECT_CURSO) — reaproveitado
+    // abaixo como a capa ANTES da gravação, sem precisar de uma segunda
+    // consulta só para isso.
+    const curso = await getManagedCourse(id.data)
+    if (!curso) {
       return { ok: false, error: 'Você não tem permissão para editar este curso.' }
     }
 
     const parsed = cursoSchema.safeParse(Object.fromEntries(formData))
     if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
+    const novaCapa = parsed.data.coverUrl || null
     const supabase = await createServerSupabase()
     const { error } = await supabase
       .from('courses')
       .update({
         title: parsed.data.title,
         description: parsed.data.description || null,
-        cover_url: parsed.data.coverUrl || null,
+        cover_url: novaCapa,
       })
       .eq('id', id.data)
 
     if (error) throw error
+
+    // Só DEPOIS que a gravação teve sucesso: se a capa mudou, apaga a
+    // antiga do Storage (se for nossa). Nunca antes — ver o comentário de
+    // apagarCapaSubstituida (src/server/capas-upload.ts) para o porquê:
+    // apagar no momento do upload, e não no do Salvar, foi o bug que gerou
+    // esta rodada de correção.
+    if (curso.coverUrl && curso.coverUrl !== novaCapa) {
+      const admin = createAdminSupabase()
+      await apagarCapaSubstituida(admin, 'curso', id.data, curso.coverUrl, novaCapa)
+    }
 
     revalidatePath('/gerenciar')
     revalidatePath(`/gerenciar/cursos/${id.data}`)

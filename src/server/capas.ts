@@ -86,12 +86,6 @@ const confirmSchema = z.object({
   escopo: escopoSchema,
   id: z.string().uuid(),
   path: z.string().trim().min(1).max(600),
-  // A capa que está sendo SUBSTITUÍDA, se houver — o navegador manda o valor
-  // atual do campo de URL (antes de trocar). Opcional: pode ser a primeira
-  // capa da entidade (nada para substituir) ou vir vazio/ausente. A decisão
-  // de apagar (só se for do nosso bucket, só se for da MESMA entidade) mora
-  // em verifyCapaUpload — testável, ao contrário desta action —, não aqui.
-  previousUrl: z.string().trim().max(2000).optional().or(z.literal('')),
 })
 
 /**
@@ -99,9 +93,17 @@ const confirmSchema = z.object({
  * a URL assinada do passo 1), esta action confirma o que chegou de verdade
  * — não o que foi declarado ao mintar — e devolve a URL pública. Quem
  * chama ainda precisa salvar essa URL no campo coverUrl da área/curso (via
- * updateArea/updateCourse) — esta action só confirma o upload (e, se
- * `previousUrl` apontar para uma capa anterior da mesma entidade, manda
- * verifyCapaUpload apagá-la).
+ * updateArea/updateCourse) — esta action só confirma o upload.
+ *
+ * Confirmar o upload NÃO apaga a capa anterior, mesmo que exista uma. Uma
+ * versão anterior desta action apagava (recebia `previousUrl` e mandava
+ * verifyCapaUpload remover) — quebrava sempre que alguém confirmava o
+ * upload e fechava a aba sem salvar: o banco continuava apontando para uma
+ * capa que essa lógica já tinha apagado. A limpeza da capa substituída
+ * agora mora em updateArea/updateCourse (src/server/areas.ts, courses.ts),
+ * chamada só depois que a escrita no banco já teve sucesso — ver o
+ * comentário de verifyCapaUpload e de apagarCapaSubstituida em
+ * capas-upload.ts para o raciocínio completo.
  *
  * A checagem de que `path` pertence à pasta de `escopo`/`id` mora dentro de
  * verifyCapaUpload, não aqui: esta action é 'use server' e exige cookies()
@@ -119,7 +121,6 @@ export async function confirmCapaUpload(
       escopo: formData.get('escopo'),
       id: formData.get('id'),
       path: formData.get('path'),
-      previousUrl: formData.get('previousUrl'),
     })
     if (!parsed.success) return { ok: false, error: 'Dados de upload inválidos.' }
 
@@ -128,13 +129,7 @@ export async function confirmCapaUpload(
     }
 
     const admin = createAdminSupabase()
-    return await verifyCapaUpload(
-      admin,
-      parsed.data.escopo,
-      parsed.data.id,
-      parsed.data.path,
-      parsed.data.previousUrl || null,
-    )
+    return await verifyCapaUpload(admin, parsed.data.escopo, parsed.data.id, parsed.data.path)
   } catch (error) {
     return toActionError(error)
   }
