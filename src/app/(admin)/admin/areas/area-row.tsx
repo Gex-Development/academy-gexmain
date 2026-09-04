@@ -56,6 +56,8 @@ export function AreaRow({ area }: { area: Area }) {
             largura={1600}
             altura={1000}
             defaultValue={area.coverUrl ?? ''}
+            escopo="area"
+            entidadeId={area.id}
           />
           <Field label="Cor" htmlFor={`color-${area.id}`} hint="Formato #RRGGBB — usada quando não há capa">
             <Input id={`color-${area.id}`} name="color" defaultValue={area.color ?? ''} placeholder="#004EAC" />

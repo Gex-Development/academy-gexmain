@@ -5,7 +5,9 @@ import { z } from 'zod'
 import { assertRole } from '@/lib/auth/guards'
 import { getCurrentUser } from '@/lib/auth/session'
 import { slugify } from '@/lib/slug'
+import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { apagarCapaSubstituida } from '@/server/capas-upload'
 import { ok, toActionError, type ActionResult } from './result'
 
 export type AreaRow = {
@@ -142,6 +144,14 @@ export async function updateArea(_prev: unknown, formData: FormData): Promise<Ac
     if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message }
 
     const supabase = await createServerSupabase()
+
+    // Capa ANTES da gravação — só para decidir, depois que a escrita já deu
+    // certo, se sobrou uma capa velha para apagar do Storage. Lida antes de
+    // qualquer coisa: é a última chance de ver o valor que está prestes a
+    // ser sobrescrito.
+    const { data: antes } = await supabase.from('areas').select('cover_url').eq('id', id.data).maybeSingle()
+
+    const novaCapa = parsed.data.coverUrl || null
     const { data, error } = await supabase
       .from('areas')
       .update({
@@ -149,13 +159,25 @@ export async function updateArea(_prev: unknown, formData: FormData): Promise<Ac
         description: parsed.data.description || null,
         color: parsed.data.color || null,
         position: parsed.data.position,
-        cover_url: parsed.data.coverUrl || null,
+        cover_url: novaCapa,
       })
       .eq('id', id.data)
       .select('id, name, slug, description, color, position, cover_url')
       .single()
 
     if (error) throw error
+
+    // Só DEPOIS que a gravação teve sucesso: se a capa mudou, apaga a
+    // antiga do Storage (se for nossa). Nunca antes — ver o comentário de
+    // apagarCapaSubstituida (src/server/capas-upload.ts) para o porquê:
+    // apagar no momento do upload, e não no do Salvar, foi o bug que gerou
+    // a rodada de correção anterior. `data` (não `novaCapa`) é a PROVA —
+    // veio de volta do próprio UPDATE, não do texto do formulário — que
+    // apagarCapaSubstituida exige antes de apagar qualquer coisa.
+    if (antes?.cover_url && antes.cover_url !== novaCapa) {
+      const admin = createAdminSupabase()
+      await apagarCapaSubstituida(admin, 'area', id.data, antes.cover_url, data)
+    }
 
     revalidatePath('/admin/areas')
     return ok(toAreaRow(data))
