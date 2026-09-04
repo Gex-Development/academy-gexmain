@@ -1,0 +1,79 @@
+# Verificação automática da GEX Academy.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# POR QUE O GATILHO É `push` E NÃO SÓ `pull_request`
+# ────────────────────────────────────────────────────────────────────────────
+# Quase todo exemplo de CI que se encontra por aí dispara só em pull request.
+# Neste projeto isso seria inútil: o fluxo é fazer merge direto na `main`, sem
+# PR nenhum. Uma CI só de PR nunca rodaria, e os commits chegariam à `main`
+# "verdes" apenas porque ninguém os verificou.
+#
+# `workflow_dispatch` fica como escape: permite rodar à mão pela aba Actions
+# sem precisar de um commit novo.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# POR QUE O BANCO E O E2E NÃO ESTÃO AQUI
+# ────────────────────────────────────────────────────────────────────────────
+# `npm run test:db` (139 verificações) roda contra o Supabase REAL da empresa,
+# que tem a conta do dono do produto e dados de verdade. Ligar isso a cada push
+# significaria escrever no banco de produção a cada commit.
+#
+# `npm run test:e2e` inclui um spec que dispara convite de e-mail real.
+#
+# Os dois só entram aqui quando existir um banco descartável para a CI — um
+# projeto Supabase separado, ou branching. Até lá, rodam na máquina de quem
+# desenvolve, com a lixeira de fixtures que o projeto já tem.
+#
+# ────────────────────────────────────────────────────────────────────────────
+# POR QUE NÃO HÁ NENHUM SEGREDO NESTE ARQUIVO
+# ────────────────────────────────────────────────────────────────────────────
+# Verificado por medição, não por suposição: `npm run build` foi executado com
+# o .env.local removido e passou. Todas as páginas que buscam dados são
+# dinâmicas, então nada roda em tempo de build que precise de credencial.
+# Se um dia o build passar a exigir variável, o sintoma vai ser falha aqui —
+# e a resposta é tornar a página dinâmica, não colocar segredo na CI.
+
+name: Verificação
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verificar:
+    name: Tipos, lint, testes e build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar o Node
+        uses: actions/setup-node@v4
+        with:
+          # Mesma versão maior usada no desenvolvimento (v24).
+          node-version: '24'
+          # Usa o cache do npm entre execuções, com o package-lock.json como
+          # chave — o arquivo está versionado, então a chave é estável.
+          cache: 'npm'
+
+      - name: Instalar dependências
+        # `npm ci` em vez de `npm install`: instala exatamente o que está no
+        # package-lock.json e falha se ele estiver fora de sincronia com o
+        # package.json, em vez de "consertar" silenciosamente.
+        run: npm ci
+
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes unitários
+        # 276 verificações puras: regra de acesso, montagem da vitrine,
+        # escolha de destinatário de e-mail, escape de HTML, progresso.
+        run: npm test
+
+      - name: Build de produção
+        run: npm run build
