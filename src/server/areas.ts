@@ -171,10 +171,12 @@ export async function updateArea(_prev: unknown, formData: FormData): Promise<Ac
     // antiga do Storage (se for nossa). Nunca antes — ver o comentário de
     // apagarCapaSubstituida (src/server/capas-upload.ts) para o porquê:
     // apagar no momento do upload, e não no do Salvar, foi o bug que gerou
-    // esta rodada de correção.
+    // a rodada de correção anterior. `data` (não `novaCapa`) é a PROVA —
+    // veio de volta do próprio UPDATE, não do texto do formulário — que
+    // apagarCapaSubstituida exige antes de apagar qualquer coisa.
     if (antes?.cover_url && antes.cover_url !== novaCapa) {
       const admin = createAdminSupabase()
-      await apagarCapaSubstituida(admin, 'area', id.data, antes.cover_url, novaCapa)
+      await apagarCapaSubstituida(admin, 'area', id.data, antes.cover_url, data)
     }
 
     revalidatePath('/admin/areas')

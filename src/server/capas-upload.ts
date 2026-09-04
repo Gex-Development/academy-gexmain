@@ -137,6 +137,27 @@ function extrairCaminhoCapa(url: string): string | null {
  * o mesmo que uma capa salva, e apagar cedo demais deixava o banco
  * apontando para um objeto que já não existia.
  *
+ * PROVA DE GRAVAÇÃO (rodada de correção 3): o parâmetro que era `urlNova:
+ * string` virou `linhaGravada: { cover_url: string | null }` — a capa NOVA
+ * é lida DELA, nunca de um valor que quem chama poderia ter calculado ANTES
+ * de gravar qualquer coisa (ex.: o texto que veio do formulário). A ideia é
+ * que quem chama só consegue produzir honestamente esse objeto depois de um
+ * INSERT/UPDATE de verdade ter voltado do Postgres (`.select('cover_url')`
+ * no retorno da gravação) — updateArea e updateCourse passam exatamente
+ * isso, não um valor solto.
+ *
+ * O efeito prático: isto transforma a ORDEM (gravar antes de apagar) de uma
+ * convenção que dependia de quem chama lembrar dela — o que já falhou uma
+ * vez, na rodada 1 — numa invariante que esta função cobra sozinha. Se
+ * algum dia alguém chamar esta função ANTES da gravação de verdade,
+ * generalizando o bug da rodada 1, a única `linhaGravada` disponível nesse
+ * momento ainda mostra a capa ANTIGA (porque a gravação não aconteceu) — e
+ * `linhaGravada.cover_url` sai igual a `urlAntiga`. Isso cai na MESMA
+ * checagem de "não mudou" logo abaixo, que já recusa apagar. Não tem como
+ * chamar esta função cedo demais e ainda assim apagar algo — testado em
+ * tests/db/capas.test.ts ("recusa apagar quando a linha gravada ainda
+ * mostra a capa antiga").
+ *
  * Com a exclusão só acontecendo aqui, o pior cenário de abandono muda de
  * figura conforme o caso:
  * - Primeira capa de uma entidade (não havia nada antes): confirmar o
@@ -155,15 +176,45 @@ function extrairCaminhoCapa(url: string): string | null {
  * areas/courses) — deliberadamente fora do escopo desta função.
  *
  * Só remove quando: (a) havia uma capa antiga (`urlAntiga` não vazio), (b)
- * o valor realmente mudou (`urlAntiga !== urlNova` — evita apagar uma URL
- * que ainda está em uso só porque o formulário foi salvo de novo sem
- * mudança na capa), (c) a antiga é do NOSSO bucket (extrairCaminhoCapa
- * devolve null para uma URL colada de fora) e (d) pertence à MESMA pasta
- * escopo/id da entidade que acabou de ser salva — sem essa última checagem,
- * um `cover_url` antigo de OUTRA entidade (dado que chega como string,
- * gravado em algum momento, sem garantia formal de pertencer a quem está
- * sendo salvo agora) poderia apagar um objeto que esta chamada não tem
- * relação nenhuma com.
+ * a capa que a linha GRAVADA de fato mostra é diferente da antiga — prova
+ * de que a gravação realmente mudou o valor, não só a intenção de quem
+ * chamou —, (c) a antiga é do NOSSO bucket (extrairCaminhoCapa devolve null
+ * para uma URL colada de fora) e (d) pertence à MESMA pasta escopo/id da
+ * entidade que acabou de ser salva — sem essa última checagem, um
+ * `cover_url` antigo de OUTRA entidade poderia apagar um objeto que esta
+ * chamada não tem relação nenhuma com.
+ *
+ * updateArea/updateCourse só chamam esta função quando JÁ acham (pela
+ * própria comparação, antes de gravar) que a capa mudou — por isso, quando
+ * (b) falha aqui dentro (a linha gravada não confirma a mudança), não é o
+ * caminho comum de um Salvar que não mexeu na capa (esse nem chega a
+ * chamar esta função): é ou uma corrida (ver o comentário seguinte) ou o
+ * próprio bug que esta prova existe para prevenir — por isso vale log.
+ *
+ * CORRIDA ACEITA, NÃO TRATADA: dois salvamentos simultâneos na MESMA
+ * entidade podem, em teoria, quebrar uma capa por um caminho diferente
+ * deste — (1) salvamento X lê o cover_url ANTIGO A; (2) salvamento Y lê o
+ * MESMO A; (3) X grava a capa B e, depois, chama esta função com
+ * urlAntiga=A, que apaga o objeto A; (4) Y, que também tinha decidido
+ * gravar A de volta (ou qualquer valor que reafirme A), grava A por cima de
+ * B — e agora o banco aponta para A, que X acabou de apagar. Capa quebrada,
+ * de novo, por um caminho que a prova de gravação acima NÃO fecha (cada
+ * chamada, isolada, tem uma prova válida — o problema é a intercalação das
+ * duas).
+ *
+ * Ruling: aceito, não guardado. Exige DOIS salvamentos concorrentes na
+ * MESMA área ou curso, com coincidência de valores, num sistema com hoje
+ * quatro áreas, onde só admin edita área e só o líder da área edita o curso
+ * dela — a colisão exige duas pessoas (ou a mesma pessoa em duas abas)
+ * editando a MESMA capa ao mesmo tempo, nesta escala pequena. A guarda
+ * seria concorrência otimista no cover_url (um UPDATE ... WHERE cover_url =
+ * $antigo, comparar-e-trocar), que faria salvamentos legítimos e
+ * sequenciais falharem com um erro confuso ("outra pessoa mudou a capa
+ * enquanto você editava") para prevenir algo que praticamente não ocorre
+ * nesta escala. Custo se esta decisão estiver errada: uma capa quebrada,
+ * que se conserta subindo de novo — não é silenciosa nem permanente. Se um
+ * dia isto incomodar de verdade, a saída é concorrência otimista, não mais
+ * código de limpeza aqui.
  *
  * Nunca lança: falha ao remover só registra no log e segue — a escrita no
  * banco já aconteceu e é o que importa; mesma disciplina de "nunca lança"
@@ -175,9 +226,18 @@ export async function apagarCapaSubstituida(
   escopo: CapaEscopo,
   id: string,
   urlAntiga: string | null,
-  urlNova: string | null,
+  linhaGravada: { cover_url: string | null },
 ): Promise<void> {
-  if (!urlAntiga || urlAntiga === urlNova) return
+  if (!urlAntiga) return
+
+  const urlNova = linhaGravada.cover_url
+  if (urlAntiga === urlNova) {
+    console.warn(
+      '[apagarCapaSubstituida] a linha gravada ainda mostra a capa antiga — recusando apagar',
+      { escopo, id },
+    )
+    return
+  }
 
   const caminhoAntigo = extrairCaminhoCapa(urlAntiga)
   if (!caminhoAntigo || !caminhoAntigo.startsWith(`${escopo}/${id}/`)) return

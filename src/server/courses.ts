@@ -165,7 +165,12 @@ export async function updateCourse(
 
     const novaCapa = parsed.data.coverUrl || null
     const supabase = await createServerSupabase()
-    const { error } = await supabase
+    // .select('cover_url') aqui não é para o retorno da action (que só
+    // devolve o id) — é a PROVA que apagarCapaSubstituida exige: o valor que
+    // realmente voltou do UPDATE, não o texto do formulário. Sem essa volta
+    // ao Postgres não haveria como distinguir "a gravação confirmou a capa
+    // nova" de "ainda nem tentamos gravar".
+    const { data: gravado, error } = await supabase
       .from('courses')
       .update({
         title: parsed.data.title,
@@ -173,6 +178,8 @@ export async function updateCourse(
         cover_url: novaCapa,
       })
       .eq('id', id.data)
+      .select('cover_url')
+      .single()
 
     if (error) throw error
 
@@ -180,10 +187,10 @@ export async function updateCourse(
     // antiga do Storage (se for nossa). Nunca antes — ver o comentário de
     // apagarCapaSubstituida (src/server/capas-upload.ts) para o porquê:
     // apagar no momento do upload, e não no do Salvar, foi o bug que gerou
-    // esta rodada de correção.
+    // a rodada de correção anterior.
     if (curso.coverUrl && curso.coverUrl !== novaCapa) {
       const admin = createAdminSupabase()
-      await apagarCapaSubstituida(admin, 'curso', id.data, curso.coverUrl, novaCapa)
+      await apagarCapaSubstituida(admin, 'curso', id.data, curso.coverUrl, gravado)
     }
 
     revalidatePath('/gerenciar')

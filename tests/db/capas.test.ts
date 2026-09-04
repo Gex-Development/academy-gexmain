@@ -257,18 +257,22 @@ describe('verifyCapaUpload: valida o que o Storage recebeu, não o que foi decla
   })
 })
 
-describe('verifyCapaUpload: confirmar um upload NUNCA apaga a capa anterior (regressão)', () => {
-  // Rodada de correção 2: uma versão anterior de verifyCapaUpload recebia a
-  // URL antiga e apagava o objeto correspondente NA CONFIRMAÇÃO. Quebrava o
-  // caminho mais comum de todos: líder abre "Editar", escolhe uma imagem
-  // nova (confirma — a antiga já era apagada aqui), fecha a aba SEM clicar
-  // em Salvar. O banco continuava com cover_url apontando para a capa
-  // antiga, mas o objeto já não existia mais — imagem quebrada no catálogo
-  // público, visível para a empresa inteira, sem conserto. Este teste é o
-  // que provaria essa regressão: confirma duas capas em sequência para a
-  // MESMA entidade (a segunda "substituindo" a primeira do ponto de vista de
-  // quem usa a tela) sem nunca chamar updateArea/updateCourse — a única
-  // gravação de verdade — e afirma que a primeira sobrevive.
+describe('verifyCapaUpload: confirmar um upload nunca apaga nada', () => {
+  // NÃO é o teste de regressão da rodada 1 — e afirmar isso seria enganoso:
+  // o bug da rodada 1 vivia dentro de um `if (previousUrl) { ... }` que só
+  // rodava quando `verifyCapaUpload` recebia esse argumento. A correção da
+  // rodada 2 removeu `previousUrl` da assinatura por completo — não sobrou
+  // nenhum jeito de fazer este teste (ou qualquer chamada real) exercitar o
+  // ramo que apagava, porque o parâmetro que o alimentava não existe mais.
+  // Rodar isto contra o código da rodada 1 passaria igual, porque nunca
+  // fornece `previousUrl` — não discrimina as duas versões.
+  //
+  // O que este teste prova, com valor próprio: confirmar upload continua
+  // sem tocar em nenhum objeto além do que acabou de subir, mesmo quando
+  // duas confirmações acontecem em sequência para a mesma entidade — a
+  // exclusão de capa substituída não é alcançável a partir daqui, ponto,
+  // porque a função não recebe (nem nunca mais vai receber, pela
+  // assinatura) informação nenhuma sobre uma capa "anterior".
   it(
     'confirmar uma segunda capa para a mesma entidade não apaga a primeira, mesmo sem salvar',
     async () => {
@@ -282,9 +286,6 @@ describe('verifyCapaUpload: confirmar um upload NUNCA apaga a capa anterior (reg
       expect(segundo.ok).toBe(true)
       caminhosParaLimpar.push(caminhoSegundo)
 
-      // A parte que importa: os DOIS objetos sobrevivem. Nenhuma chamada a
-      // updateArea/updateCourse aconteceu — só confirmação de upload, duas
-      // vezes seguidas — então nada deveria ter sido apagado.
       const { data: infoPrimeiro } = await db.storage.from(CAPA_BUCKET).info(caminhoPrimeiro)
       expect(infoPrimeiro).not.toBeNull()
       const { data: infoSegundo } = await db.storage.from(CAPA_BUCKET).info(caminhoSegundo)
@@ -294,9 +295,9 @@ describe('verifyCapaUpload: confirmar um upload NUNCA apaga a capa anterior (reg
   )
 })
 
-describe('apagarCapaSubstituida: chamada só depois que a gravação no banco já teve sucesso', () => {
+describe('apagarCapaSubstituida: só apaga quando a linha GRAVADA prova que a capa mudou', () => {
   it(
-    'apaga a capa anterior do NOSSO bucket quando o valor mudou',
+    'apaga a capa anterior do NOSSO bucket quando a linha gravada mostra a capa nova',
     async () => {
       const caminhoAntigo = await subirCapa('curso', cursoId)
       const antigo = await verifyCapaUpload(db, 'curso', cursoId, caminhoAntigo)
@@ -309,33 +310,68 @@ describe('apagarCapaSubstituida: chamada só depois que a gravação no banco j�
       if (!novo.ok) return
       caminhosParaLimpar.push(caminhoNovo)
 
-      // Só chamada aqui — depois das duas confirmações — simulando o
-      // Salvar já ter gravado `novo.data.url` no lugar de `antigo.data.url`.
-      await apagarCapaSubstituida(db, 'curso', cursoId, antigo.data.url, novo.data.url)
+      // `{ cover_url: novo.data.url }` representa a linha como ela sai de
+      // updateArea/updateCourse DEPOIS de gravar — não o valor calculado
+      // antes de gravar.
+      await apagarCapaSubstituida(db, 'curso', cursoId, antigo.data.url, { cover_url: novo.data.url })
 
-      // A nova sobrevive.
       const { data: infoNovo } = await db.storage.from(CAPA_BUCKET).info(caminhoNovo)
       expect(infoNovo).not.toBeNull()
 
-      // A antiga não.
       const { data: infoAntigo } = await db.storage.from(CAPA_BUCKET).info(caminhoAntigo)
       expect(infoAntigo).toBeNull()
     },
     60_000,
   )
 
-  it('não apaga quando o valor NÃO mudou (mesma URL antiga e nova)', async () => {
-    const caminho = await subirCapa('curso', cursoId)
-    const verificado = await verifyCapaUpload(db, 'curso', cursoId, caminho)
-    expect(verificado.ok).toBe(true)
-    if (!verificado.ok) return
-    caminhosParaLimpar.push(caminho)
+  // Este é o teste que a parte 4 da rodada 2 tentou ser e não conseguiu: lá,
+  // "urlNova" era uma string solta que o próprio teste inventava — nada
+  // impedia de inventar um valor igual ao antigo, mas isso também não
+  // discriminava nada, porque a função antiga não tinha como saber se
+  // aquele valor batia com o banco. Agora a "prova" É o banco: passar uma
+  // `linhaGravada` cujo cover_url ainda é o valor ANTIGO é exatamente o que
+  // aconteceria se esta função fosse chamada ANTES da gravação de verdade
+  // (a leitura mais recente disponível, nesse momento, ainda mostraria o
+  // antigo) — generalizando o bug da rodada 1 para qualquer chamador futuro
+  // que reordene o código sem perceber. Também cobre o caminho comum e
+  // inofensivo de um Salvar que não mexeu na capa.
+  it(
+    'recusa apagar quando a linha gravada ainda mostra a capa antiga — mesma situação de uma chamada antes da gravação de verdade',
+    async () => {
+      const caminho = await subirCapa('curso', cursoId)
+      const verificado = await verifyCapaUpload(db, 'curso', cursoId, caminho)
+      expect(verificado.ok).toBe(true)
+      if (!verificado.ok) return
+      caminhosParaLimpar.push(caminho)
 
-    await apagarCapaSubstituida(db, 'curso', cursoId, verificado.data.url, verificado.data.url)
+      await apagarCapaSubstituida(db, 'curso', cursoId, verificado.data.url, { cover_url: verificado.data.url })
 
-    const { data: info } = await db.storage.from(CAPA_BUCKET).info(caminho)
-    expect(info).not.toBeNull()
-  })
+      // A parte que importa: o objeto SOBREVIVE — a função recusou apagar
+      // porque a "prova" não mostrava mudança nenhuma.
+      const { data: info } = await db.storage.from(CAPA_BUCKET).info(caminho)
+      expect(info).not.toBeNull()
+    },
+    60_000,
+  )
+
+  // Caso que faltava (apontado na rodada 3): limpar o campo de capa —
+  // cover_url passa a NULL — também é uma substituição de verdade, e a
+  // antiga precisa ser apagada como qualquer outra troca.
+  it(
+    'apaga a capa anterior quando a linha gravada mostra a capa NULA (campo de capa limpo)',
+    async () => {
+      const caminho = await subirCapa('curso', cursoId)
+      const verificado = await verifyCapaUpload(db, 'curso', cursoId, caminho)
+      expect(verificado.ok).toBe(true)
+      if (!verificado.ok) return
+
+      await apagarCapaSubstituida(db, 'curso', cursoId, verificado.data.url, { cover_url: null })
+
+      const { data: info } = await db.storage.from(CAPA_BUCKET).info(caminho)
+      expect(info).toBeNull()
+    },
+    60_000,
+  )
 
   it(
     'NÃO apaga uma "capa anterior" que pertence a OUTRA entidade — cover_url antigo não é permissão para apagar o que quiser',
@@ -357,7 +393,9 @@ describe('apagarCapaSubstituida: chamada só depois que a gravação no banco j�
       if (!verificadoCurso.ok) return
       caminhosParaLimpar.push(caminhoDoCurso)
 
-      await apagarCapaSubstituida(db, 'curso', cursoId, verificadoArea.data.url, verificadoCurso.data.url)
+      await apagarCapaSubstituida(db, 'curso', cursoId, verificadoArea.data.url, {
+        cover_url: verificadoCurso.data.url,
+      })
 
       // A capa da área sobrevive intacta.
       const { data: infoArea } = await db.storage.from(CAPA_BUCKET).info(caminhoDaArea)
@@ -370,18 +408,16 @@ describe('apagarCapaSubstituida: chamada só depois que a gravação no banco j�
     'ignora uma URL antiga que não é do nosso bucket (capa cadastrada por URL colada) — não tenta apagar, não lança',
     async () => {
       await expect(
-        apagarCapaSubstituida(
-          db,
-          'curso',
-          cursoId,
-          'https://exemplo-externo.com/imagens/capa-antiga.png',
-          'https://exemplo-externo.com/imagens/capa-nova.png',
-        ),
+        apagarCapaSubstituida(db, 'curso', cursoId, 'https://exemplo-externo.com/imagens/capa-antiga.png', {
+          cover_url: 'https://exemplo-externo.com/imagens/capa-nova.png',
+        }),
       ).resolves.toBeUndefined()
     },
   )
 
   it('não faz nada quando não havia capa anterior (primeira capa da entidade)', async () => {
-    await expect(apagarCapaSubstituida(db, 'curso', cursoId, null, 'https://qualquer.coisa/capa.png')).resolves.toBeUndefined()
+    await expect(
+      apagarCapaSubstituida(db, 'curso', cursoId, null, { cover_url: 'https://qualquer.coisa/capa.png' }),
+    ).resolves.toBeUndefined()
   })
 })
