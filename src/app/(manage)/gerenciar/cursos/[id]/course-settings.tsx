@@ -22,7 +22,14 @@ export function CourseSettings({ course }: { course: ManagedCourse }) {
         <Field label="Descrição" htmlFor="description">
           <Input id="description" name="description" defaultValue={course.description ?? ''} maxLength={600} />
         </Field>
-        <CoverField name="coverUrl" largura={1280} altura={800} defaultValue={course.coverUrl ?? ''} />
+        <CoverField
+          name="coverUrl"
+          largura={1280}
+          altura={800}
+          defaultValue={course.coverUrl ?? ''}
+          escopo="curso"
+          entidadeId={course.id}
+        />
         {saveState && !saveState.ok && (
           <p role="alert" className="text-xs text-perigo">
             {saveState.error}

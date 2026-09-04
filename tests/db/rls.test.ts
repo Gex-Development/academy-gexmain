@@ -1054,6 +1054,51 @@ describe('RLS — storage de anexos: upload direto não tem política nenhuma; U
   })
 })
 
+// Mesma forma do bloco acima, para o bucket 'capas' (migration
+// 0012_bucket_de_capas.sql): PÚBLICO para leitura, mas sem NENHUMA política
+// de escrita — o único jeito de gravar um objeto é com uma URL assinada,
+// mintada pelo servidor (createCapaUpload, src/server/capas.ts) depois de
+// checar papel e acesso ao recurso. Público não é o mesmo que "qualquer um
+// escreve": a leitura pública dispensa RLS (o bucket resolve isso sozinho),
+// mas a ESCRITA continua exigindo a mesma autorização de sempre.
+describe('RLS — storage de capas: upload direto não tem política nenhuma; URL assinada continua funcionando', () => {
+  it('líder ativo, gerenciando o próprio curso, NÃO consegue subir objeto por upload direto', async () => {
+    const cliente = await authClient(emailLiderTrafego)
+    const caminho = `curso/${cursoTrafego}/upload-direto-${Date.now()}.png`
+    const { error } = await cliente.storage
+      .from('capas')
+      .upload(caminho, new Blob(['conteúdo de teste']), { contentType: 'image/png' })
+    expect(error).not.toBeNull()
+
+    const { data: objetos } = await db.storage.from('capas').list(`curso/${cursoTrafego}`)
+    expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(false)
+  })
+
+  it('upload via URL assinada (o caminho real da aplicação) continua funcionando para o mesmo líder', async () => {
+    const caminho = `curso/${cursoTrafego}/upload-assinado-${Date.now()}.png`
+    // db aqui é o cliente admin (service_role) — o mesmo papel que
+    // mintCapaUpload usa para chamar createSignedUploadUrl.
+    const { data: assinado, error: erroAssinatura } = await db.storage
+      .from('capas')
+      .createSignedUploadUrl(caminho)
+    expect(erroAssinatura).toBeNull()
+    if (!assinado) return
+
+    const cliente = await authClient(emailLiderTrafego)
+    const { error: erroUpload } = await cliente.storage
+      .from('capas')
+      .uploadToSignedUrl(assinado.path, assinado.token, new Blob(['conteúdo de teste']), {
+        contentType: 'image/png',
+      })
+    expect(erroUpload).toBeNull()
+
+    const { data: objetos } = await db.storage.from('capas').list(`curso/${cursoTrafego}`)
+    expect(objetos?.some((o) => caminho.endsWith(o.name))).toBe(true)
+
+    await db.storage.from('capas').remove([caminho])
+  })
+})
+
 // 0007_endurece_funcoes_security_definer.sql, achado 3 (re-revisão):
 // perguntas_apaga/respostas_apaga nunca tinham teste em nenhuma rodada.
 describe('RLS — perguntas_apaga/respostas_apaga: autor apaga; estranho não', () => {
