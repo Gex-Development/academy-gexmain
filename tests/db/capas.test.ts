@@ -23,11 +23,27 @@ let emailLider: string
 // limpar objetos de Storage, porque capa não tem uma tabela própria para
 // rastreá-los (ao contrário de lesson_attachments, que guarda storage_path).
 // Por isso a limpeza dos objetos que os testes sobem de propósito é manual
-// aqui, no afterAll, antes da lixeira.
+// aqui, no afterAll, antes da lixeira. Alguns testes abaixo (substituição)
+// já removem o próprio objeto antigo como parte do comportamento sob
+// teste — o que sobra aqui é só o que sobrevive até o fim de um teste com
+// sucesso.
 const caminhosParaLimpar: string[] = []
 
 function pngPequeno(tamanho = 1024) {
   return new File([new Uint8Array(tamanho)], 'capa.png', { type: 'image/png' })
+}
+
+async function subirCapa(escopo: 'area' | 'curso', id: string, tamanho = 1024) {
+  const mint = await mintCapaUpload(db, escopo, id, { name: 'capa.png', type: 'image/png', size: tamanho })
+  if (!mint.ok) throw new Error(`mint falhou: ${mint.error}`)
+
+  const cliente = await authClient(emailLider)
+  const { error } = await cliente.storage
+    .from(CAPA_BUCKET)
+    .uploadToSignedUrl(mint.data.path, mint.data.token, pngPequeno(tamanho), { contentType: 'image/png' })
+  if (error) throw error
+
+  return mint.data.path
 }
 
 beforeAll(async () => {
@@ -123,7 +139,7 @@ describe('verifyCapaUpload: valida o que o Storage recebeu, não o que foi decla
       expect(erroUpload).toBeNull()
       caminhosParaLimpar.push(mint.data.path)
 
-      const verificado = await verifyCapaUpload(db, mint.data.path)
+      const verificado = await verifyCapaUpload(db, 'area', areaId, mint.data.path)
       expect(verificado.ok).toBe(true)
       if (!verificado.ok) return
 
@@ -211,7 +227,7 @@ describe('verifyCapaUpload: valida o que o Storage recebeu, não o que foi decla
       expect(erroUpload).toBeNull()
       caminhosParaLimpar.push(mint.data.path)
 
-      const verificado = await verifyCapaUpload(db, mint.data.path)
+      const verificado = await verifyCapaUpload(db, 'curso', cursoId, mint.data.path)
       expect(verificado.ok).toBe(false)
       if (!verificado.ok) {
         expect(verificado.error).toBe('Tipo de arquivo não permitido. Use PNG, JPEG ou WebP.')
@@ -221,6 +237,99 @@ describe('verifyCapaUpload: valida o que o Storage recebeu, não o que foi decla
       // rejeição — verifyCapaUpload removeu.
       const { data: infoDepois } = await db.storage.from(CAPA_BUCKET).info(mint.data.path)
       expect(infoDepois).toBeNull()
+    },
+    60_000,
+  )
+
+  // Achado da revisão: numa versão anterior, esta checagem morava na Server
+  // Action (confirmCapaUpload, em src/server/capas.ts), onde nenhum teste de
+  // banco a alcança — a action exige cookies() de um request Next.js de
+  // verdade. Movida para dentro de verifyCapaUpload, puro e testável, no
+  // mesmo formato do teste equivalente de anexo
+  // (tests/db/attachments-upload.test.ts:131-140).
+  it('recusa um caminho fora da pasta desta entidade', async () => {
+    const resultado = await verifyCapaUpload(db, 'curso', cursoId, 'pasta-de-outro-curso/arquivo.png')
+    expect(resultado.ok).toBe(false)
+    if (!resultado.ok) expect(resultado.error).toBe('Caminho de upload inválido.')
+  })
+})
+
+describe('verifyCapaUpload: substituição apaga a capa anterior — só quando é segura de apagar', () => {
+  it(
+    'apaga a capa anterior do NOSSO bucket ao confirmar a substituição, depois que a nova já passou na validação',
+    async () => {
+      const caminhoAntigo = await subirCapa('curso', cursoId)
+      const antigo = await verifyCapaUpload(db, 'curso', cursoId, caminhoAntigo)
+      expect(antigo.ok).toBe(true)
+      if (!antigo.ok) return
+
+      // Confirma que a capa "antiga" está mesmo lá antes de testar a troca —
+      // senão o teste provaria remoção nenhuma.
+      const { data: infoAntes } = await db.storage.from(CAPA_BUCKET).info(caminhoAntigo)
+      expect(infoAntes).not.toBeNull()
+
+      const caminhoNovo = await subirCapa('curso', cursoId)
+      const novo = await verifyCapaUpload(db, 'curso', cursoId, caminhoNovo, antigo.data.url)
+      expect(novo.ok).toBe(true)
+      if (!novo.ok) return
+
+      // A nova sobrevive.
+      const { data: infoNovo } = await db.storage.from(CAPA_BUCKET).info(caminhoNovo)
+      expect(infoNovo).not.toBeNull()
+      caminhosParaLimpar.push(caminhoNovo)
+
+      // A parte que importa: a antiga NÃO sobrevive — verifyCapaUpload apagou
+      // como parte de confirmar a substituição, não antes (a nova só é
+      // considerada "substituição válida" depois de passar em info()/
+      // validateCapa, checados antes deste ponto no código).
+      const { data: infoDepois } = await db.storage.from(CAPA_BUCKET).info(caminhoAntigo)
+      expect(infoDepois).toBeNull()
+    },
+    60_000,
+  )
+
+  it(
+    'NÃO apaga uma "capa anterior" que pertence a OUTRA entidade — previousUrl não é permissão para apagar o que quiser',
+    async () => {
+      // Cenário adversarial: o path novo é de fato do curso sendo editado
+      // (passaria em qualquer checagem de permissão feita antes de chamar
+      // esta função), mas o previousUrl aponta para a capa da ÁREA — uma
+      // entidade diferente, que esta chamada não tem relação nenhuma com.
+      // Sem a checagem de prefixo em cima de previousUrl, isto apagaria a
+      // capa de uma entidade só porque alguém colocou a URL dela no campo
+      // errado do FormData.
+      const caminhoDaArea = await subirCapa('area', areaId)
+      const verificadoArea = await verifyCapaUpload(db, 'area', areaId, caminhoDaArea)
+      expect(verificadoArea.ok).toBe(true)
+      if (!verificadoArea.ok) return
+      caminhosParaLimpar.push(caminhoDaArea)
+
+      const caminhoDoCurso = await subirCapa('curso', cursoId)
+      const resultado = await verifyCapaUpload(db, 'curso', cursoId, caminhoDoCurso, verificadoArea.data.url)
+      expect(resultado.ok).toBe(true)
+      if (!resultado.ok) return
+      caminhosParaLimpar.push(caminhoDoCurso)
+
+      // A capa da área sobrevive intacta.
+      const { data: infoArea } = await db.storage.from(CAPA_BUCKET).info(caminhoDaArea)
+      expect(infoArea).not.toBeNull()
+    },
+    60_000,
+  )
+
+  it(
+    'ignora uma previousUrl que não é do nosso bucket (capa cadastrada por URL colada) — não tenta apagar, não falha',
+    async () => {
+      const caminho = await subirCapa('curso', cursoId)
+      const resultado = await verifyCapaUpload(
+        db,
+        'curso',
+        cursoId,
+        caminho,
+        'https://exemplo-externo.com/imagens/capa-antiga.png',
+      )
+      expect(resultado.ok).toBe(true)
+      caminhosParaLimpar.push(caminho)
     },
     60_000,
   )

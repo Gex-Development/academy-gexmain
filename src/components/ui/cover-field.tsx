@@ -1,6 +1,7 @@
 'use client'
 
-import { useId, useRef, useState } from 'react'
+import { useId, useState } from 'react'
+import { cn } from '@/lib/cn'
 import { ALLOWED_CAPA_MIME, CAPA_BUCKET, validateCapa, type CapaEscopo } from '@/lib/storage/capas'
 import { createBrowserSupabase } from '@/lib/supabase/client'
 import { confirmCapaUpload, createCapaUpload } from '@/server/capas'
@@ -20,8 +21,10 @@ const ACCEPT = Object.keys(ALLOWED_CAPA_MIME).join(',')
  *
  * Colar a URL sempre funcionou e continua funcionando — é o que mantém
  * capas já cadastradas editáveis. `escopo`+`entidadeId` acrescentam o
- * upload direto (o retângulo vira também a área de escolher arquivo); sem
- * os dois, o campo se comporta exatamente como antes, só por URL.
+ * upload direto (o retângulo vira também a área de escolher arquivo, como
+ * um <label> associado ao <input type="file"> escondido — um único parada
+ * de tabulação, não dois); sem os dois, o campo se comporta exatamente como
+ * antes, só por URL.
  */
 export function CoverField({
   id,
@@ -66,7 +69,6 @@ export function CoverField({
   const [url, setUrl] = useState(defaultValue ?? '')
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const inputArquivoRef = useRef<HTMLInputElement>(null)
 
   const podeEnviar = Boolean(escopo && entidadeId)
 
@@ -120,6 +122,11 @@ export function CoverField({
       confirmForm.set('escopo', escopo)
       confirmForm.set('id', entidadeId)
       confirmForm.set('path', mint.data.path)
+      // `url` aqui ainda é a capa ANTERIOR — só é sobrescrita por setUrl(),
+      // mais abaixo, depois que o servidor confirma o upload novo (e, se for
+      // o caso, apaga o antigo). Vazio quando esta é a primeira capa da
+      // entidade — não há nada para o servidor substituir.
+      if (url) confirmForm.set('previousUrl', url)
 
       const confirmado = await confirmCapaUpload(null, confirmForm)
       if (!confirmado.ok) {
@@ -133,9 +140,17 @@ export function CoverField({
     }
   }
 
-  function abrirSeletorDeArquivo() {
-    if (!enviando) inputArquivoRef.current?.click()
-  }
+  const conteudo = url ? (
+    // Capa é URL externa (colada, ou pública no Storage depois do upload);
+    // next/image exigiria allowlist de domínio. Mesmo mecanismo de
+    // course-card.tsx.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="" className="h-full w-full object-cover" />
+  ) : (
+    <span className="text-xs text-texto-suave">
+      {largura} × {altura} px
+    </span>
+  )
 
   return (
     <Field
@@ -156,43 +171,36 @@ export function CoverField({
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://…"
         />
-        <div
-          role={podeEnviar ? 'button' : undefined}
-          tabIndex={podeEnviar ? 0 : undefined}
-          aria-label={podeEnviar ? 'Enviar imagem de capa' : undefined}
-          onClick={podeEnviar ? abrirSeletorDeArquivo : undefined}
-          onKeyDown={
-            podeEnviar
-              ? (evento) => {
-                  if (evento.key === 'Enter' || evento.key === ' ') {
-                    evento.preventDefault()
-                    abrirSeletorDeArquivo()
-                  }
-                }
-              : undefined
-          }
-          className={`flex items-center justify-center overflow-hidden rounded-card border border-dashed border-borda bg-fundo ${podeEnviar ? 'cursor-pointer' : ''}`}
-          style={{ aspectRatio: `${largura} / ${altura}` }}
-        >
-          {url ? (
-            // Capa é URL externa (colada, ou pública no Storage depois do
-            // upload); next/image exigiria allowlist de domínio. Mesmo
-            // mecanismo de course-card.tsx.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span className="text-xs text-texto-suave">
-              {enviando ? 'Enviando…' : `${largura} × ${altura} px`}
-            </span>
-          )}
-        </div>
-        {podeEnviar && (
-          <>
-            <label htmlFor={arquivoId} className="sr-only">
-              Escolher arquivo de imagem para a capa
-            </label>
+        {podeEnviar ? (
+          // <label htmlFor> associado ao <input type="file"> escondido: o
+          // próprio navegador cuida do clique (em qualquer ponto do
+          // retângulo, imagem incluída) e do teclado (o input é o único
+          // parada de tabulação — Espaço nele já abre o seletor de arquivo,
+          // comportamento nativo, sem handler nenhum escrito aqui). Um
+          // `<div role="button">` ao lado do input, como numa versão
+          // anterior deste componente, criava DOIS paradas de tabulação
+          // para a mesma ação — este desenho tem só um.
+          <label
+            htmlFor={arquivoId}
+            className={cn(
+              'relative flex items-center justify-center overflow-hidden rounded-card border border-dashed border-borda bg-fundo',
+              enviando ? 'cursor-wait' : 'cursor-pointer',
+            )}
+            style={{ aspectRatio: `${largura} / ${altura}` }}
+          >
+            <span className="sr-only">Escolher arquivo de imagem para a capa</span>
+            {conteudo}
+            {enviando && (
+              // Visível nos dois ramos (com capa já preenchida OU vazio):
+              // sem isto, alguém reenviando a capa de um curso que já TEM
+              // capa via clicava, via a imagem antiga parada e nenhum sinal
+              // de que algo estava acontecendo durante toda a ida e volta de
+              // rede — justamente o caso comum (editar, não criar do zero).
+              <span className="absolute inset-0 flex items-center justify-center bg-fundo/85 text-xs text-texto-suave">
+                Enviando…
+              </span>
+            )}
             <input
-              ref={inputArquivoRef}
               id={arquivoId}
               type="file"
               accept={ACCEPT}
@@ -204,7 +212,14 @@ export function CoverField({
                 if (file) void enviarArquivo(file)
               }}
             />
-          </>
+          </label>
+        ) : (
+          <div
+            className="flex items-center justify-center overflow-hidden rounded-card border border-dashed border-borda bg-fundo"
+            style={{ aspectRatio: `${largura} / ${altura}` }}
+          >
+            {conteudo}
+          </div>
         )}
         {erro && (
           <p role="alert" className="text-xs text-perigo">
