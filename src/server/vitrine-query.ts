@@ -5,6 +5,7 @@
 // publicado com `access` calculado por curso, incluindo os bloqueados.
 // Agrupar e contar não consulta o banco e não decide acesso — a decisão de
 // acesso continua sendo só a de canAccessCourse, uma por curso.
+import type { AreaRow } from './areas'
 import type { Catalog, CatalogItem } from './catalog-query'
 
 export type AreaVitrine = {
@@ -29,8 +30,15 @@ export type AreaVitrine = {
  * Basta um curso liberado — pela área da pessoa ou por liberação avulsa —
  * para a capa aparecer normal. A capa bloqueada continua clicável: a pessoa
  * entra, vê o que existe e pede acesso.
+ *
+ * `todasAsAreas` existe porque o catálogo parte de CURSOS: uma área recém-
+ * criada, ainda sem curso publicado, não gera grupo nenhum e portanto seria
+ * invisível na home. Passando a lista (listAreas(), legível por qualquer
+ * colaborador ativo por RLS), as áreas que não apareceram em grupo nenhum
+ * entram no fim, com contagem zero. O parâmetro é opcional e o padrão é a
+ * lista vazia: sem ele o comportamento é o de antes, só quem tem curso.
  */
-export function montarVitrine(catalog: Catalog): AreaVitrine[] {
+export function montarVitrine(catalog: Catalog, todasAsAreas: AreaRow[] = []): AreaVitrine[] {
   const areas: AreaVitrine[] = []
 
   if (catalog.onboarding) {
@@ -71,6 +79,35 @@ export function montarVitrine(catalog: Catalog): AreaVitrine[] {
       color: grupo.areaColor,
       courseCount: grupo.items.length,
       bloqueada: grupo.items.every((item) => item.access === 'none'),
+      isOnboarding: false,
+    })
+  }
+
+  // As áreas que não apareceram em grupo nenhum: existem, mas ainda não têm
+  // curso publicado. Entram DEPOIS das que têm curso, para a home abrir com
+  // conteúdo em vez de com vazio.
+  //
+  // O casamento é por id, não por nome nem por slug: groupKey É o areaId (ver
+  // montarCatalogo), `areas.name` não tem constraint de unicidade, e o slug do
+  // grupo pode ser nulo (o grupo "Outros").
+  const idsComCurso = new Set(catalog.grupos.map((grupo) => grupo.groupKey))
+
+  for (const area of todasAsAreas) {
+    if (idsComCurso.has(area.id)) continue
+
+    areas.push({
+      key: area.id,
+      href: `/area/${area.slug}`,
+      name: area.name,
+      coverUrl: area.coverUrl,
+      color: area.color,
+      courseCount: 0,
+      // Nunca bloqueada, de propósito. `items.every(...)` sobre lista vazia
+      // é `true` por vacuidade, o que marcaria toda área vazia como "sem
+      // acesso" — e o cadeado convida a pedir acesso a uma área onde não há
+      // nada para liberar. Sem curso não há o que proteger; o cadeado
+      // aparece quando existir o primeiro curso inacessível.
+      bloqueada: false,
       isOnboarding: false,
     })
   }

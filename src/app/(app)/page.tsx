@@ -1,5 +1,6 @@
 import { AreaCard } from '@/components/catalog/area-card'
 import { HeroBanner } from '@/components/catalog/hero-banner'
+import { listAreas } from '@/server/areas'
 import { getCurrentUser } from '@/lib/auth/session'
 import { getCatalog } from '@/server/catalog'
 import { getContinueWatching } from '@/server/progress'
@@ -8,13 +9,19 @@ import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine } from '
 export const metadata = { title: 'Início — GEX Academy' }
 
 export default async function HomePage() {
-  const [user, catalog, continuar] = await Promise.all([
+  const [user, catalog, continuar, todasAsAreas] = await Promise.all([
     getCurrentUser(),
     getCatalog(),
     getContinueWatching(),
+    // O catálogo parte de CURSOS: área recém-criada, ainda sem curso
+    // publicado, não gera grupo e sumiria da home. listAreas() completa a
+    // vitrine com essas — é a mesma consulta que o admin já usa, legível por
+    // qualquer colaborador ativo por RLS (política areas_leitura), então não
+    // é superfície de acesso nova.
+    listAreas(),
   ])
 
-  const areas = montarVitrine(catalog)
+  const areas = montarVitrine(catalog, todasAsAreas)
   // escolherDestaque (vitrine-query.ts) é a autoridade nos três ramos —
   // testada caso a caso, inclusive as bordas sem trilha no sistema e sem
   // acesso a ela. O JSX abaixo pergunta a ELA (destaque.tipo), nunca decide
@@ -78,7 +85,8 @@ export default async function HomePage() {
         </h2>
         {areas.length === 0 ? (
           <p className="text-sm text-texto-suave">
-            Nenhum curso publicado ainda. Assim que os líderes publicarem, as áreas aparecem aqui.
+            Nenhuma área cadastrada ainda. Assim que o administrador criar as áreas, elas aparecem
+            aqui.
           </p>
         ) : (
           <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
