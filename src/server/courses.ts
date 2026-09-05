@@ -54,11 +54,11 @@ export async function getManagedCourse(id: string): Promise<ManagedCourse | null
 
   const curso = paraManagedCourse(data as unknown as LinhaCurso)
   // Mesma regra de "quem gerencia" que canAccessCourse já centraliza — nada
-  // aqui reimplementa a comparação de papel/área à mão. Conjunto de
-  // liberações vazio de propósito: uma liberação individual (course_access)
-  // nunca eleva o nível além de 'view' (regra 7 de canAccessCourse), então é
-  // irrelevante para a pergunta "isto é 'manage'?" — e evita uma consulta a
-  // mais só para descartar o resultado. O early return de role === 'member'
+  // aqui reimplementa a comparação de papel/área à mão. Os dois conjuntos de
+  // concessão ficam vazios de propósito: nem liberação individual (regra 8)
+  // nem área extra (regra 7) elevam o nível além de 'view', então são
+  // irrelevantes para a pergunta "isto é 'manage'?" — e evita duas consultas
+  // só para descartar o resultado. O early return de role === 'member'
   // acima garante que só admin/líder chegam aqui.
   return canAccessCourse(user, curso, new Set()) === 'manage' ? curso : null
 }
