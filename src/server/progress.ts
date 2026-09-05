@@ -41,10 +41,10 @@ export async function getCompletedLessonIds(courseId: string): Promise<Set<strin
   if (!curso) return new Set()
 
   const supabaseUsuario = await createServerSupabase()
-  const { data: liberacoes } = await supabaseUsuario
-    .from('course_access')
-    .select('course_id')
-    .eq('user_id', user.id)
+  const [{ data: liberacoes }, { data: areasExtras }] = await Promise.all([
+    supabaseUsuario.from('course_access').select('course_id').eq('user_id', user.id),
+    supabaseUsuario.from('area_access').select('area_id').eq('user_id', user.id),
+  ])
 
   const nivel = canAccessCourse(
     user,
@@ -55,6 +55,7 @@ export async function getCompletedLessonIds(courseId: string): Promise<Set<strin
       isOnboarding: curso.is_onboarding,
     },
     new Set((liberacoes ?? []).map((l) => l.course_id)),
+    new Set((areasExtras ?? []).map((a) => a.area_id)),
   )
   if (nivel === 'none') return new Set()
 

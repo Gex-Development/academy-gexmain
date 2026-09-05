@@ -96,6 +96,7 @@ export function paraCatalogItem(
   concluidasPorCurso: ReadonlyMap<string, number>,
   liberados: ReadonlySet<string>,
   pendentes: ReadonlySet<string>,
+  areasLiberadas: ReadonlySet<string> = new Set(),
 ): CatalogItem {
   return {
     id: row.id,
@@ -121,6 +122,7 @@ export function paraCatalogItem(
         isOnboarding: row.is_onboarding,
       },
       liberados,
+      areasLiberadas,
     ),
     requestStatus: pendentes.has(row.id) ? 'pending' : 'none',
     progress: buildProgress(concluidasPorCurso.get(row.id) ?? 0, aulasPorCurso.get(row.id) ?? 0),

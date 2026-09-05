@@ -1236,3 +1236,71 @@ describe('RLS — pergunta_mantem_chaves/resposta_mantem_chaves: EXECUTE revogad
     expect(data).toBeNull()
   })
 })
+
+// area_access é a tabela que concede ÁREA INTEIRA de leitura. Se um
+// colaborador conseguisse escrever nela, ele se daria acesso a qualquer setor
+// da empresa sozinho — é a escrita mais sensível do schema depois de profiles.
+describe('RLS — area_access: só admin concede área extra', () => {
+  it('colaborador NÃO consegue conceder área a si mesmo', async () => {
+    const cliente = await authClient(emailDesigner)
+    const userId = (await cliente.auth.getUser()).data.user!.id
+
+    const { error } = await cliente.from('area_access').insert({
+      user_id: userId,
+      area_id: areaTrafego,
+      granted_by: userId,
+    })
+
+    // INSERT negado por RLS é erro duro 42501, não zero linhas — a política
+    // with_check corta na escrita. (Confundir os dois já custou uma rodada
+    // de correção neste projeto.)
+    expect(error?.code).toBe('42501')
+  })
+
+  it('admin concede, e a pessoa passa a enxergar o curso da área concedida', async () => {
+    const comoAdmin = await authClient(emailAdminAtivo)
+    const designerId = (await (await authClient(emailDesigner)).auth.getUser()).data.user!.id
+
+    const { error: concedeError } = await comoAdmin.from('area_access').insert({
+      user_id: designerId,
+      area_id: areaTrafego,
+      granted_by: (await comoAdmin.auth.getUser()).data.user!.id,
+    })
+    expect(concedeError).toBeNull()
+
+    // A prova que interessa: a RPC de acesso, que é o que o RLS de curso,
+    // aula e anexo consulta.
+    const comoDesigner = await authClient(emailDesigner)
+    const { data: podeAcessar } = await comoDesigner.rpc('can_access_course', {
+      p_course_id: cursoTrafego,
+    })
+    expect(podeAcessar).toBe(true)
+
+    // E continua sem enxergar rascunho — área extra não revela rascunho.
+    const { data: rascunho } = await comoDesigner.from('courses').select('id').eq('id', cursoRascunho)
+    expect(rascunho).toEqual([])
+  })
+
+  it('colaborador vê a própria concessão, mas não a de outra pessoa', async () => {
+    const comoDesigner = await authClient(emailDesigner)
+    const { data: propria } = await comoDesigner.from('area_access').select('id')
+    expect(propria).toHaveLength(1)
+
+    const comoAlunoTrafego = await authClient(emailTrafego)
+    const { data: alheia } = await comoAlunoTrafego.from('area_access').select('id')
+    expect(alheia).toEqual([])
+  })
+
+  it('colaborador NÃO consegue apagar a própria concessão para burlar contagem', async () => {
+    const comoDesigner = await authClient(emailDesigner)
+    const { data: antes } = await comoDesigner.from('area_access').select('id')
+
+    await comoDesigner.from('area_access').delete().eq('area_id', areaTrafego)
+
+    // DELETE sem permissão não dá erro: a política de USING simplesmente não
+    // casa nenhuma linha, e a operação "tem sucesso" apagando zero. Por isso
+    // a asserção é sobre o que sobrou, não sobre o erro.
+    const { data: depois } = await comoDesigner.from('area_access').select('id')
+    expect(depois).toEqual(antes)
+  })
+})

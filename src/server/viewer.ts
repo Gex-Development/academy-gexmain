@@ -36,9 +36,10 @@ export async function getCourseView(slug: string): Promise<CourseView | null> {
 
   const supabase = await createServerSupabase()
 
-  const [{ data }, { data: liberacoes }] = await Promise.all([
+  const [{ data }, { data: liberacoes }, { data: areasExtras }] = await Promise.all([
     supabase.from('courses').select(SELECT_CURSO_VIEW).eq('slug', slug).maybeSingle(),
     supabase.from('course_access').select('course_id').eq('user_id', user.id),
+    supabase.from('area_access').select('area_id').eq('user_id', user.id),
   ])
   if (!data) return null
 
@@ -46,6 +47,7 @@ export async function getCourseView(slug: string): Promise<CourseView | null> {
     data as unknown as LinhaCursoView,
     user,
     new Set((liberacoes ?? []).map((l) => l.course_id)),
+    new Set((areasExtras ?? []).map((a) => a.area_id)),
   )
 }
 

@@ -51,6 +51,7 @@ export const SELECT_PAINEL_PERFIS = 'id, full_name, role, area_id, status, areas
 export const SELECT_PAINEL_CURSOS =
   'id, title, area_id, status, is_onboarding, areas(name), lessons(id, status)'
 export const SELECT_PAINEL_LIBERACOES = 'user_id, course_id'
+export const SELECT_PAINEL_AREAS_EXTRAS = 'user_id, area_id'
 export const SELECT_PAINEL_PROGRESSO = 'user_id, lesson_id'
 
 export type LinhaPerfilPainel = {
@@ -73,6 +74,7 @@ export type LinhaCursoPainel = {
 }
 
 export type LinhaLiberacaoPainel = { user_id: string; course_id: string }
+export type LinhaAreaExtraPainel = { user_id: string; area_id: string }
 export type LinhaProgressoPainel = { user_id: string; lesson_id: string }
 
 /**
@@ -165,6 +167,7 @@ export function montarPainel(
   linhasCursos: readonly LinhaCursoPainel[],
   linhasLiberacoes: readonly LinhaLiberacaoPainel[],
   linhasProgresso: readonly LinhaProgressoPainel[],
+  linhasAreasExtras: readonly LinhaAreaExtraPainel[] = [],
 ): { pessoas: PersonProgress[]; cursos: CourseStats[] } {
   const aulasPorCurso = new Map<string, string[]>()
   for (const curso of linhasCursos) {
@@ -179,6 +182,16 @@ export function montarPainel(
     const atualSet = liberacoesPorUsuario.get(linha.user_id) ?? new Set<string>()
     atualSet.add(linha.course_id)
     liberacoesPorUsuario.set(linha.user_id, atualSet)
+  }
+
+  // Sem isto, quem tem área extra teria "disponíveis" menor do que a
+  // realidade — o painel mostraria progresso alto sobre um denominador
+  // incompleto, que é pior que mostrar número nenhum.
+  const areasExtrasPorUsuario = new Map<string, Set<string>>()
+  for (const linha of linhasAreasExtras) {
+    const atualSet = areasExtrasPorUsuario.get(linha.user_id) ?? new Set<string>()
+    atualSet.add(linha.area_id)
+    areasExtrasPorUsuario.set(linha.user_id, atualSet)
   }
 
   const concluidasPorUsuario = new Map<string, Set<string>>()
@@ -198,12 +211,16 @@ export function montarPainel(
   const pessoas: PersonProgress[] = listaPerfis.map((perfil) => {
     const usuario = paraAccessUser(perfil)
     const liberados = liberacoesPorUsuario.get(perfil.id) ?? new Set<string>()
+    const areasExtras = areasExtrasPorUsuario.get(perfil.id) ?? new Set<string>()
     const concluidasDaPessoa = concluidasPorUsuario.get(perfil.id) ?? new Set<string>()
 
     // === 'view', não !== 'none': só conta como aluno, nunca como gestor —
     // ver o comentário de montarPainel acima.
     const aulasDisponiveis = linhasCursos
-      .filter((curso) => canAccessCourse(usuario, paraAccessCourse(curso), liberados) === 'view')
+      .filter(
+        (curso) =>
+          canAccessCourse(usuario, paraAccessCourse(curso), liberados, areasExtras) === 'view',
+      )
       .flatMap((curso) => aulasPorCurso.get(curso.id) ?? [])
 
     const concluidas = aulasDisponiveis.filter((id) => concluidasDaPessoa.has(id)).length
@@ -242,6 +259,7 @@ export function montarPainel(
           paraAccessUser(perfil),
           cursoAccess,
           liberacoesPorUsuario.get(perfil.id) ?? new Set<string>(),
+          areasExtrasPorUsuario.get(perfil.id) ?? new Set<string>(),
         ) !== 'none',
     )
 

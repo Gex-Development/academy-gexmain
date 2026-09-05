@@ -47,10 +47,10 @@ export async function listAttachments(lessonId: string): Promise<AttachmentRow[]
   }
 
   const supabaseUsuario = await createServerSupabase()
-  const { data: liberacoes } = await supabaseUsuario
-    .from('course_access')
-    .select('course_id')
-    .eq('user_id', user.id)
+  const [{ data: liberacoes }, { data: areasExtras }] = await Promise.all([
+    supabaseUsuario.from('course_access').select('course_id').eq('user_id', user.id),
+    supabaseUsuario.from('area_access').select('area_id').eq('user_id', user.id),
+  ])
 
   const nivel = canAccessCourse(
     user,
@@ -61,6 +61,7 @@ export async function listAttachments(lessonId: string): Promise<AttachmentRow[]
       isOnboarding: curso.is_onboarding,
     },
     new Set((liberacoes ?? []).map((l) => l.course_id)),
+    new Set((areasExtras ?? []).map((a) => a.area_id)),
   )
 
   // Aula em rascunho: material só para quem gerencia o curso.
