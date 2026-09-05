@@ -29,6 +29,7 @@ export async function decideAttachmentDownload(
   liberados: ReadonlySet<string>,
   user: AccessUser,
   attachmentId: string,
+  areasLiberadas: ReadonlySet<string> = new Set(),
 ): Promise<AttachmentDownloadDecision> {
   const { data: anexo } = await admin
     .from('lesson_attachments')
@@ -53,6 +54,7 @@ export async function decideAttachmentDownload(
       isOnboarding: curso.is_onboarding,
     },
     liberados,
+    areasLiberadas,
   )
 
   if (!podeVerAnexosDaAula(aula.status, nivel)) {

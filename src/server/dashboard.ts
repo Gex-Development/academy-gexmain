@@ -4,11 +4,13 @@ import { getCurrentUser } from '@/lib/auth/session'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import {
   montarPainel,
+  SELECT_PAINEL_AREAS_EXTRAS,
   SELECT_PAINEL_CURSOS,
   SELECT_PAINEL_LIBERACOES,
   SELECT_PAINEL_PERFIS,
   SELECT_PAINEL_PROGRESSO,
   type CourseStats,
+  type LinhaAreaExtraPainel,
   type LinhaCursoPainel,
   type LinhaLiberacaoPainel,
   type LinhaPerfilPainel,
@@ -55,11 +57,12 @@ export async function getDashboard(): Promise<{ pessoas: PersonProgress[]; curso
 
   const admin = createAdminSupabase()
 
-  const [perfisRes, cursosRes, liberacoesRes, progressoRes] = await Promise.all([
+  const [perfisRes, cursosRes, liberacoesRes, progressoRes, areasExtrasRes] = await Promise.all([
     admin.from('profiles').select(SELECT_PAINEL_PERFIS).eq('status', 'active').order('full_name'),
     admin.from('courses').select(SELECT_PAINEL_CURSOS),
     admin.from('course_access').select(SELECT_PAINEL_LIBERACOES),
     admin.from('lesson_progress').select(SELECT_PAINEL_PROGRESSO),
+    admin.from('area_access').select(SELECT_PAINEL_AREAS_EXTRAS),
   ])
   // `error` não é descartado em nenhuma das quatro: se qualquer consulta
   // falhar (embed ambíguo, RLS regredida etc.), `data` vem `null`, e o
@@ -70,6 +73,7 @@ export async function getDashboard(): Promise<{ pessoas: PersonProgress[]; curso
   if (perfisRes.error) throw perfisRes.error
   if (cursosRes.error) throw cursosRes.error
   if (liberacoesRes.error) throw liberacoesRes.error
+  if (areasExtrasRes.error) throw areasExtrasRes.error
   if (progressoRes.error) throw progressoRes.error
 
   return montarPainel(
@@ -78,5 +82,6 @@ export async function getDashboard(): Promise<{ pessoas: PersonProgress[]; curso
     (cursosRes.data ?? []) as unknown as LinhaCursoPainel[],
     (liberacoesRes.data ?? []) as LinhaLiberacaoPainel[],
     (progressoRes.data ?? []) as LinhaProgressoPainel[],
+    (areasExtrasRes.data ?? []) as LinhaAreaExtraPainel[],
   )
 }

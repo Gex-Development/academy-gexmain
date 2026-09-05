@@ -164,7 +164,7 @@ beforeAll(async () => {
   aulaTrafegoRascunho = aulaRascunho!.id
 
   // Líder de Design ganha acesso AVULSO ao curso de Tráfego — 'view' via
-  // canAccessCourse (regra 7), nunca 'manage' (regra 3 exige a MESMA área).
+  // canAccessCourse (regra 8), nunca 'manage' (regra 3 exige a MESMA área).
   // É o caso central desta suíte: acesso real, sem virar professor nem
   // moderador.
   const { error: grantError } = await db

@@ -17,6 +17,8 @@ export type PersonRow = {
   areaId: string | null
   areaName: string | null
   status: UserStatus
+  /** Áreas EXTRAS de leitura (area_access). Não inclui a área principal. */
+  extraAreaIds: string[]
 }
 
 const papel = z.enum(['admin', 'leader', 'member'])
@@ -40,10 +42,22 @@ export async function listPeople(): Promise<PersonRow[]> {
   if (!user || user.role !== 'admin' || user.status !== 'active') return []
 
   const supabase = await createServerSupabase()
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, full_name, email, role, area_id, status, areas(name)')
-    .order('full_name')
+  const [{ data }, { data: extras }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, full_name, email, role, area_id, status, areas(name)')
+      .order('full_name'),
+    // Sem filtro por usuário: quem chega aqui já é admin, e a política
+    // areas_extras_leitura devolve todas as linhas para admin ativo.
+    supabase.from('area_access').select('user_id, area_id'),
+  ])
+
+  const extrasPorPessoa = new Map<string, string[]>()
+  for (const linha of extras ?? []) {
+    const lista = extrasPorPessoa.get(linha.user_id) ?? []
+    lista.push(linha.area_id)
+    extrasPorPessoa.set(linha.user_id, lista)
+  }
 
   return (data ?? []).map((row) => ({
     id: row.id,
@@ -53,6 +67,7 @@ export async function listPeople(): Promise<PersonRow[]> {
     areaId: row.area_id,
     areaName: (row.areas as { name: string } | null)?.name ?? null,
     status: row.status as UserStatus,
+    extraAreaIds: extrasPorPessoa.get(row.id) ?? [],
   }))
 }
 
@@ -157,15 +172,65 @@ export async function updatePerson(
       return { ok: false, error: 'Você não pode remover o próprio acesso de admin.' }
     }
 
+    // getAll, não Object.fromEntries: caixas de seleção mandam o mesmo nome
+    // várias vezes, e fromEntries guarda só a ÚLTIMA. Se o schema acima
+    // tentasse ler daqui, só uma área extra sobreviveria — silenciosamente.
+    const extrasPedidas = formData.getAll('extraAreaIds').map(String)
+    const uuid = z.string().uuid()
+    if (extrasPedidas.some((id) => !uuid.safeParse(id).success)) {
+      return { ok: false, error: 'Área inválida.' }
+    }
+
+    const areaPrincipal = parsed.data.areaId || null
+    // A área principal já libera pela regra 6; guardá-la também como extra
+    // seria linha redundante e deixaria a tela mostrando duas verdades para
+    // o mesmo fato.
+    const extras = new Set(extrasPedidas.filter((id) => id !== areaPrincipal))
+
     const supabase = await createServerSupabase()
     const { error } = await supabase
       .from('profiles')
-      .update({ role: parsed.data.role, area_id: parsed.data.areaId || null })
+      .update({ role: parsed.data.role, area_id: areaPrincipal })
       .eq('id', parsed.data.id)
 
     if (error) throw error
 
+    // Só DEPOIS que o perfil gravou. Diferença, não apaga-e-recria: recriar
+    // deixaria uma janela em que a pessoa fica sem o acesso que ela já
+    // tinha, e perderia quem concedeu e quando.
+    const { data: atuais, error: leituraError } = await supabase
+      .from('area_access')
+      .select('area_id')
+      .eq('user_id', parsed.data.id)
+    if (leituraError) throw leituraError
+
+    const jaTem = new Set((atuais ?? []).map((linha) => linha.area_id))
+    const paraRemover = [...jaTem].filter((id) => !extras.has(id))
+    const paraAcrescentar = [...extras].filter((id) => !jaTem.has(id))
+
+    if (paraRemover.length > 0) {
+      const { error: removeError } = await supabase
+        .from('area_access')
+        .delete()
+        .eq('user_id', parsed.data.id)
+        .in('area_id', paraRemover)
+      if (removeError) throw removeError
+    }
+
+    if (paraAcrescentar.length > 0) {
+      const { error: insereError } = await supabase.from('area_access').insert(
+        paraAcrescentar.map((areaId) => ({
+          user_id: parsed.data.id,
+          area_id: areaId,
+          granted_by: currentUser.id,
+        })),
+      )
+      if (insereError) throw insereError
+    }
+
     revalidatePath('/admin/pessoas')
+    // A vitrine e a página de área mudam para quem recebeu ou perdeu acesso.
+    revalidatePath('/')
     return ok({ id: parsed.data.id })
   } catch (error) {
     return toActionError(error)

@@ -148,6 +148,52 @@ export type Database = {
         }
         Relationships: []
       }
+      area_access: {
+        Row: {
+          id: string
+          user_id: string
+          area_id: string
+          granted_by: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          area_id: string
+          granted_by: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          area_id?: string
+          granted_by?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "area_access_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "area_access_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "area_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_access: {
         Row: {
           id: string

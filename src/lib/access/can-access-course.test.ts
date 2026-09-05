@@ -138,3 +138,69 @@ describe('canAccessCourse — colaborador', () => {
     expect(level).toBe('none')
   })
 })
+
+// ── Área extra liberada pelo admin (tabela area_access) ────────────────────
+//
+// Diferente de course_access, que libera UM curso: área extra libera todo
+// curso publicado daquela área, inclusive os que ainda vão ser criados.
+// A pessoa continua com uma área principal — isto é acréscimo, não troca.
+const areaExtraDesign = new Set<string>([AREA_DESIGN])
+
+describe('canAccessCourse — área extra', () => {
+  it('libera curso publicado de área extra', () => {
+    expect(
+      canAccessCourse(user(), course({ areaId: AREA_DESIGN }), semLiberacao, areaExtraDesign),
+    ).toBe('view')
+  })
+
+  it('NÃO libera rascunho — a regra 4 vem antes e rascunho só aparece para quem gerencia', () => {
+    expect(
+      canAccessCourse(
+        user(),
+        course({ areaId: AREA_DESIGN, status: 'draft' }),
+        semLiberacao,
+        areaExtraDesign,
+      ),
+    ).toBe('none')
+  })
+
+  it('NÃO libera curso de área que não foi concedida', () => {
+    expect(
+      canAccessCourse(user(), course({ areaId: 'area-outra' }), semLiberacao, areaExtraDesign),
+    ).toBe('none')
+  })
+
+  it('nunca eleva a "manage" — área extra é só leitura', () => {
+    expect(
+      canAccessCourse(user(), course({ areaId: AREA_DESIGN }), semLiberacao, areaExtraDesign),
+    ).not.toBe('manage')
+  })
+
+  it('não vale para usuário desativado — status continua vindo primeiro', () => {
+    expect(
+      canAccessCourse(
+        user({ status: 'inactive' }),
+        course({ areaId: AREA_DESIGN }),
+        semLiberacao,
+        areaExtraDesign,
+      ),
+    ).toBe('none')
+  })
+
+  it('curso sem área (a trilha inicial) não casa com área extra nenhuma', () => {
+    // Guarda contra o bug clássico de comparar null com null: a trilha tem
+    // area_id nulo, e um Set nunca deve ser consultado com null.
+    expect(
+      canAccessCourse(
+        user({ areaId: null }),
+        course({ areaId: null, isOnboarding: false, status: 'published' }),
+        semLiberacao,
+        new Set<string>(),
+      ),
+    ).toBe('none')
+  })
+
+  it('sem o argumento, o comportamento é o de antes — nenhuma área extra', () => {
+    expect(canAccessCourse(user(), course({ areaId: AREA_DESIGN }), semLiberacao)).toBe('none')
+  })
+})

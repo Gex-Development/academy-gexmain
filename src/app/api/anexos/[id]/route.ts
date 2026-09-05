@@ -18,13 +18,14 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   const admin = createAdminSupabase()
   const supabase = await createServerSupabase()
-  const { data: liberacoes } = await supabase
-    .from('course_access')
-    .select('course_id')
-    .eq('user_id', user.id)
+  const [{ data: liberacoes }, { data: areasExtras }] = await Promise.all([
+    supabase.from('course_access').select('course_id').eq('user_id', user.id),
+    supabase.from('area_access').select('area_id').eq('user_id', user.id),
+  ])
   const liberados = new Set((liberacoes ?? []).map((l) => l.course_id))
+  const areasLiberadas = new Set((areasExtras ?? []).map((a) => a.area_id))
 
-  const decisao = await decideAttachmentDownload(admin, liberados, user, id)
+  const decisao = await decideAttachmentDownload(admin, liberados, user, id, areasLiberadas)
   if (!decisao.ok) return NextResponse.json({ erro: decisao.erro }, { status: decisao.status })
 
   const { data: assinado, error } = await admin.storage

@@ -36,11 +36,20 @@ export async function getCatalog(): Promise<Catalog> {
 
   const supabase = await createServerSupabase()
 
-  const [{ data: cursos }, { data: liberacoes }, { data: solicitacoes }] = await Promise.all([
-    supabase.from('courses').select(SELECT_CATALOGO).eq('status', 'published'),
-    supabase.from('course_access').select('course_id').eq('user_id', user.id),
-    supabase.from('access_requests').select('course_id').eq('user_id', user.id).eq('status', 'pending'),
-  ])
+  const [{ data: cursos }, { data: liberacoes }, { data: solicitacoes }, { data: areasExtras }] =
+    await Promise.all([
+      supabase.from('courses').select(SELECT_CATALOGO).eq('status', 'published'),
+      supabase.from('course_access').select('course_id').eq('user_id', user.id),
+      supabase
+        .from('access_requests')
+        .select('course_id')
+        .eq('user_id', user.id)
+        .eq('status', 'pending'),
+      // Áreas extras concedidas pelo admin (area_access). Liberam todo curso
+      // publicado da área, inclusive os criados depois — por isso não dá para
+      // derivar de course_access.
+      supabase.from('area_access').select('area_id').eq('user_id', user.id),
+    ])
 
   // A contagem de aulas vem de uma função SECURITY DEFINER, não de um join.
   // RLS é por LINHA: uma política que deixasse contar as aulas de um curso
@@ -68,9 +77,10 @@ export async function getCatalog(): Promise<Catalog> {
 
   const liberados = new Set((liberacoes ?? []).map((l) => l.course_id))
   const pendentes = new Set((solicitacoes ?? []).map((s) => s.course_id))
+  const areasLiberadas = new Set((areasExtras ?? []).map((a) => a.area_id))
 
   const items = ((cursos ?? []) as unknown as LinhaCatalogo[]).map((row) =>
-    paraCatalogItem(row, user, aulasPorCurso, concluidasPorCurso, liberados, pendentes),
+    paraCatalogItem(row, user, aulasPorCurso, concluidasPorCurso, liberados, pendentes, areasLiberadas),
   )
 
   return montarCatalogo(items)

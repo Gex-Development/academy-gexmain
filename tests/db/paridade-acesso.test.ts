@@ -30,7 +30,17 @@ const lixeira = criarLixeira()
 let areaA: string
 let areaB: string
 
-type Papel = 'admin' | 'leaderA' | 'leaderB' | 'memberA' | 'memberB' | 'inactiveMemberA'
+type Papel =
+  | 'admin'
+  | 'leaderA'
+  | 'leaderB'
+  | 'memberA'
+  | 'memberB'
+  | 'inactiveMemberA'
+  // SEM área principal, mas com área EXTRA em B (area_access). Sem área
+  // própria, a única coisa que pode liberar o curso publicado de B é a regra
+  // nova — se ela sumir do SQL ou do TypeScript, este é o par que discorda.
+  | 'memberAreaExtraB'
 
 type FixtureUsuario = { id: string; email: string; access: AccessUser }
 const usuarios = {} as Record<Papel, FixtureUsuario>
@@ -68,6 +78,7 @@ beforeAll(async () => {
     { chave: 'memberA', role: 'member', areaId: areaA, status: 'active' },
     { chave: 'memberB', role: 'member', areaId: areaB, status: 'active' },
     { chave: 'inactiveMemberA', role: 'member', areaId: areaA, status: 'inactive' },
+    { chave: 'memberAreaExtraB', role: 'member', areaId: null, status: 'active' },
   ]
 
   for (const def of definicoesDeUsuario) {
@@ -131,12 +142,30 @@ beforeAll(async () => {
     granted_by: donoId,
   })
   if (grantError) throw grantError
+
+  // Área extra: memberAreaExtraB recebe a ÁREA B inteira. Não tem área
+  // principal nem liberação de curso, então tudo que ele acessar em B vem
+  // desta linha — inclusive liberadoIndividualB, que é de B.
+  const { error: areaGrantError } = await db.from('area_access').insert({
+    user_id: usuarios.memberAreaExtraB.id,
+    area_id: areaB,
+    granted_by: donoId,
+  })
+  if (areaGrantError) throw areaGrantError
 })
 
 afterAll(() => lixeira.limpar())
 
 describe('paridade: can_access_course (SQL) × canAccessCourse (TypeScript)', () => {
-  const papeis: Papel[] = ['admin', 'leaderA', 'leaderB', 'memberA', 'memberB', 'inactiveMemberA']
+  const papeis: Papel[] = [
+    'admin',
+    'leaderA',
+    'leaderB',
+    'memberA',
+    'memberB',
+    'inactiveMemberA',
+    'memberAreaExtraB',
+  ]
   const cursosChaves: CursoChave[] = [
     'publicadoA',
     'rascunhoA',
@@ -158,7 +187,10 @@ describe('paridade: can_access_course (SQL) × canAccessCourse (TypeScript)', ()
         // Só memberA tem liberação individual, e só no curso
         // liberadoIndividualB — mesmo fixture inserido no beforeAll.
         const liberados = new Set<string>(papel === 'memberA' ? [cursos.liberadoIndividualB.id] : [])
-        const esperado = canAccessCourse(usuario.access, curso.access, liberados) !== 'none'
+        // Mesmo fixture do beforeAll: só memberAreaExtraB tem área extra, e só a B.
+        const areasExtras = new Set<string>(papel === 'memberAreaExtraB' ? [areaB] : [])
+        const esperado =
+          canAccessCourse(usuario.access, curso.access, liberados, areasExtras) !== 'none'
 
         expect(data, `RPC devolveu ${data}, TypeScript esperava ${esperado} (${papel} × ${cursoChave})`).toBe(
           esperado,

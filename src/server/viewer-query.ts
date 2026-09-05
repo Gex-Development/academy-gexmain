@@ -90,6 +90,7 @@ export function paraCourseView(
   row: LinhaCursoView,
   user: AccessUser,
   grantedCourseIds: ReadonlySet<string>,
+  grantedAreaIds: ReadonlySet<string> = new Set(),
 ): CourseView | null {
   const access = canAccessCourse(
     user,
@@ -100,6 +101,7 @@ export function paraCourseView(
       isOnboarding: row.is_onboarding,
     },
     grantedCourseIds,
+    grantedAreaIds,
   )
 
   if (row.status !== 'published' && access !== 'manage') return null
