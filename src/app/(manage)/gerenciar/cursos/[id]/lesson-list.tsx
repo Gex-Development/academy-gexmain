@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useActionState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -9,7 +10,24 @@ import { formatDuration } from '@/lib/format'
 import { createLesson, deleteLesson, moveLesson, type LessonRow } from '@/server/lessons'
 
 export function LessonList({ courseId, lessons }: { courseId: string; lessons: LessonRow[] }) {
+  const router = useRouter()
   const [createState, createAction, creating] = useActionState(createLesson, null)
+
+  /*
+    Criada a aula, vai direto para a página dela — que é onde ficam os
+    ANEXOS, logo abaixo do vídeo. Antes a pessoa continuava na lista e nada
+    indicava que o material da aula morava a um clique dali; foi exatamente
+    assim que o dono do produto concluiu que o campo de anexo não existia.
+
+    Mesmo padrão que criar curso já usa (course-form.tsx).
+
+    A navegação depende de `ok`, nunca de "a action respondeu": um vídeo que
+    o parser não reconhece volta como erro, e navegar aí tiraria a pessoa da
+    tela antes de ela ler a mensagem.
+  */
+  useEffect(() => {
+    if (createState?.ok) router.push(`/gerenciar/cursos/${courseId}/aulas/${createState.data.id}`)
+  }, [createState, courseId, router])
   const [moveState, moveAction, moving] = useActionState(moveLesson, null)
   const [deleteState, deleteAction, deleting] = useActionState(deleteLesson, null)
   const erro =

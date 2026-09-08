@@ -53,7 +53,15 @@ export default async function GerenciarPage() {
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-texto-suave">
           Novo curso
         </h2>
-        <CourseForm areas={areas} isAdmin={user!.role === 'admin'} />
+        {/*
+          O id do curso que ainda vai ser criado nasce aqui, no servidor, e
+          viaja como prop — mesmo desenho de /admin/areas. É ele que permite
+          subir a capa antes de o curso existir (o arquivo mora em
+          `curso/<id>/...`). No servidor porque servidor e cliente precisam
+          renderizar o MESMO valor, e porque createCourse revalida esta rota:
+          a cada curso criado, a página roda de novo e manda um id novo.
+        */}
+        <CourseForm areas={areas} isAdmin={user!.role === 'admin'} novoId={crypto.randomUUID()} />
       </aside>
     </div>
   )
