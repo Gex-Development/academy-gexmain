@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { AreaRow } from './areas'
 import type { Catalog, CatalogItem } from './catalog-query'
-import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine, selecionarEmAndamento } from './vitrine-query'
+import {
+  capaDoCurso,
+  corDaAreaDoCurso,
+  dadosDaArea,
+  escolherDestaque,
+  montarVitrine,
+  selecionarEmAndamento,
+} from './vitrine-query'
 
 function item(over: Partial<CatalogItem> = {}): CatalogItem {
   return {
@@ -329,5 +336,59 @@ describe('selecionarEmAndamento', () => {
     const c = item({ id: 'c', progress: { completed: 3, total: 4, percent: 75 } })
 
     expect(selecionarEmAndamento([c, a, b]).map((i) => i.id)).toEqual(['c', 'a', 'b'])
+  })
+})
+
+// ── A página de área: de onde vêm nome, capa e cor ──────────────────────────
+//
+// Regressão real, encontrada em produção-local: a página escolhia a fonte
+// CAMPO A CAMPO com `??` (`grupo?.areaColor ?? areaVazia!.color`). `??` não
+// pergunta "existe grupo?", pergunta "este valor é nulo?" — então uma área
+// COM curso e SEM cor caía no ramo da área vazia, que é null exatamente
+// porque o grupo existe. Resultado: TypeError em toda área que tivesse curso
+// publicado e cor nula. As quatro áreas reais têm cor nula.
+describe('dadosDaArea', () => {
+  const linha = (over: Partial<AreaRow> = {}): AreaRow => areaRow(over)
+
+  it('área COM curso e SEM cor usa o grupo, não a área vazia', () => {
+    const dados = dadosDaArea(grupo({ areaColor: null }), undefined)
+
+    expect(dados).not.toBeNull()
+    expect(dados!.cor).toBeNull()
+    expect(dados!.nome).toBe('Copy')
+  })
+
+  it('área COM curso e SEM capa usa o grupo, não a área vazia', () => {
+    const dados = dadosDaArea(grupo({ areaCoverUrl: null }), undefined)
+
+    expect(dados!.capaUrl).toBeNull()
+    expect(dados!.itens).toHaveLength(1)
+  })
+
+  it('área SEM curso usa a linha da área, com lista de cursos vazia', () => {
+    const dados = dadosDaArea(undefined, linha({ name: 'Backend', color: '#004EAC' }))
+
+    expect(dados!.nome).toBe('Backend')
+    expect(dados!.cor).toBe('#004EAC')
+    expect(dados!.itens).toEqual([])
+  })
+
+  it('área sem curso E sem cor não explode — devolve nulo no campo, não erro', () => {
+    const dados = dadosDaArea(undefined, linha({ color: null, coverUrl: null }))
+
+    expect(dados!.cor).toBeNull()
+    expect(dados!.capaUrl).toBeNull()
+  })
+
+  it('nem grupo nem área devolve null — é o 404 da página', () => {
+    expect(dadosDaArea(undefined, undefined)).toBeNull()
+  })
+
+  it('havendo grupo, a linha da área é ignorada — o grupo é a fonte', () => {
+    // Se as duas chegarem, a fonte é o grupo: ele reflete o catálogo, que já
+    // passou pela decisão de acesso.
+    const dados = dadosDaArea(grupo({ areaName: 'Do grupo' }), linha({ name: 'Da linha' }))
+
+    expect(dados!.nome).toBe('Do grupo')
   })
 })
