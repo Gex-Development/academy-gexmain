@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/cn'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { VideoPlayer } from '@/components/video/video-player'
@@ -100,13 +101,42 @@ export function LessonForm({ lesson }: { lesson: LessonRow }) {
           )}
         </div>
 
-        <form action={statusAction} className="rounded-card border border-borda bg-superficie p-4">
+        <form
+          action={statusAction}
+          className="rounded-card border border-borda bg-superficie p-4"
+          onSubmit={(e) => {
+            // Confirmação só ao DESPUBLICAR. Publicar é construtivo e
+            // reversível; tirar do ar mexe no que os alunos já enxergam, e
+            // um clique sem querer some com a aula para todo mundo.
+            // confirm() nativo é o padrão que o projeto já usa para excluir
+            // aula e pergunta — inventar um diálogo próprio aqui criaria
+            // duas linguagens para a mesma coisa.
+            if (
+              !publicando &&
+              !confirm(
+                `Tirar "${lesson.title}" do ar? Os alunos deixam de ver esta aula. O registro de quem já assistiu é preservado.`,
+              )
+            ) {
+              e.preventDefault()
+            }
+          }}
+        >
           <input type="hidden" name="id" value={lesson.id} />
           <input type="hidden" name="status" value={publicando ? 'published' : 'draft'} />
-          <p className="mb-2 text-xs text-texto-suave">
+          {/* O estado vem antes do botão e com destaque: era uma frase cinza
+              do mesmo tom do resto, e a pergunta "esta aula está no ar?" é a
+              que se faz olhando para cá. */}
+          <p className="mb-2 flex items-center gap-2 text-xs font-medium">
+            <span
+              aria-hidden="true"
+              className={cn('h-2 w-2 rounded-full', publicando ? 'bg-texto-suave' : 'bg-sucesso')}
+            />
+            {publicando ? 'Em rascunho' : 'Publicada'}
+          </p>
+          <p className="mb-3 text-xs text-texto-suave">
             {publicando
-              ? 'Aula em rascunho: invisível para os alunos.'
-              : 'Aula publicada e visível para quem tem acesso ao curso.'}
+              ? 'Invisível para os alunos.'
+              : 'Visível para quem tem acesso ao curso.'}
           </p>
           {statusState && !statusState.ok && (
             <p role="alert" className="mb-2 text-xs text-perigo">
@@ -114,7 +144,7 @@ export function LessonForm({ lesson }: { lesson: LessonRow }) {
             </p>
           )}
           <Button type="submit" variant="secundario" disabled={changing}>
-            {publicando ? 'Publicar aula' : 'Voltar para rascunho'}
+            {publicando ? 'Publicar aula' : 'Despublicar'}
           </Button>
         </form>
       </aside>

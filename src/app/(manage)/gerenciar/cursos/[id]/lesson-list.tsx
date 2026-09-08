@@ -1,37 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useActionState, useEffect } from 'react'
+import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Field } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
 import { formatDuration } from '@/lib/format'
-import { createLesson, deleteLesson, moveLesson, type LessonRow } from '@/server/lessons'
+import { deleteLesson, moveLesson, type LessonRow } from '@/server/lessons'
 
 export function LessonList({ courseId, lessons }: { courseId: string; lessons: LessonRow[] }) {
-  const router = useRouter()
-  const [createState, createAction, creating] = useActionState(createLesson, null)
-
-  /*
-    Criada a aula, vai direto para a página dela — que é onde ficam os
-    ANEXOS, logo abaixo do vídeo. Antes a pessoa continuava na lista e nada
-    indicava que o material da aula morava a um clique dali; foi exatamente
-    assim que o dono do produto concluiu que o campo de anexo não existia.
-
-    Mesmo padrão que criar curso já usa (course-form.tsx).
-
-    A navegação depende de `ok`, nunca de "a action respondeu": um vídeo que
-    o parser não reconhece volta como erro, e navegar aí tiraria a pessoa da
-    tela antes de ela ler a mensagem.
-  */
-  useEffect(() => {
-    if (createState?.ok) router.push(`/gerenciar/cursos/${courseId}/aulas/${createState.data.id}`)
-  }, [createState, courseId, router])
   const [moveState, moveAction, moving] = useActionState(moveLesson, null)
   const [deleteState, deleteAction, deleting] = useActionState(deleteLesson, null)
   const erro =
-    (!createState?.ok && createState?.error) ||
     (!moveState?.ok && moveState?.error) ||
     (!deleteState?.ok && deleteState?.error)
 
@@ -40,7 +18,7 @@ export function LessonList({ courseId, lessons }: { courseId: string; lessons: L
       <ul className="divide-y divide-borda rounded-card border border-borda bg-superficie">
         {lessons.length === 0 && (
           <li className="px-4 py-6 text-center text-sm text-texto-suave">
-            Nenhuma aula ainda. Crie a primeira abaixo.
+            Nenhuma aula ainda. Crie a primeira no botão abaixo.
           </li>
         )}
         {lessons.map((lesson, indice) => (
@@ -111,19 +89,21 @@ export function LessonList({ courseId, lessons }: { courseId: string; lessons: L
         </p>
       )}
 
-      <form action={createAction} className="flex flex-col gap-4 rounded-card border border-borda bg-superficie p-4">
-        <h2 className="text-sm font-semibold">Nova aula</h2>
-        <input type="hidden" name="courseId" value={courseId} />
-        <Field label="Título" htmlFor="novo-title">
-          <Input id="novo-title" name="title" required minLength={3} maxLength={120} />
-        </Field>
-        <Field label="Vídeo" htmlFor="novo-video" hint="Link do YouTube ou código do VTurb">
-          <Input id="novo-video" name="video" required />
-        </Field>
-        <Button type="submit" disabled={creating}>
-          {creating ? 'Criando…' : 'Criar aula'}
-        </Button>
-      </form>
+      {/*
+        Era um formulário de dois campos aqui dentro; virou um link para a
+        página de aula nova, que tem o formulário COMPLETO (título, vídeo,
+        descrição, duração) e, logo depois de salvar, os anexos.
+
+        O de dois campos existia para criar várias aulas em sequência sem sair
+        da lista — vantagem que sumiu quando a criação passou a navegar para a
+        aula. Sobrava o pior dos dois: formulário incompleto E navegação.
+      */}
+      <Link
+        href={`/gerenciar/cursos/${courseId}/aulas/nova`}
+        className="flex items-center justify-center rounded-card border border-dashed border-borda bg-superficie px-4 py-3 text-sm font-medium text-texto hover:border-acao"
+      >
+        + Nova aula
+      </Link>
     </div>
   )
 }
