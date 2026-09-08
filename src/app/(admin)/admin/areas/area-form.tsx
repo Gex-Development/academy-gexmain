@@ -7,11 +7,14 @@ import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { createArea } from '@/server/areas'
 
-export function AreaForm() {
+export function AreaForm({ novoId }: { novoId: string }) {
   const [state, action, pending] = useActionState(createArea, null)
 
   return (
     <form action={action} className="flex flex-col gap-4 rounded-card border border-borda bg-superficie p-4">
+      {/* Vai junto na gravação: é o id que a área vai ter, e a pasta onde a
+          capa já foi enviada. */}
+      <input type="hidden" name="id" value={novoId} />
       <Field label="Nome" htmlFor="name" hint="Ex.: Gestão de Tráfego">
         <Input id="name" name="name" required maxLength={60} />
       </Field>
@@ -22,18 +25,26 @@ export function AreaForm() {
         <Input id="color" name="color" placeholder="#2F6BFF" />
       </Field>
       {/*
-        key muda a cada criação bem-sucedida (o id da área recém-criada é
-        único por definição), o que força o React a REMONTAR o CoverField em
-        vez de reaproveitar a instância. Sem isto: CoverField guarda a URL
-        num useState interno (input controlado), e o reset automático que o
-        React 19 faz nos campos não controlados do formulário depois de uma
-        action bem-sucedida não alcança esse estado — a URL da capa
-        continuava na caixa, e a próxima área criada em seguida herdava a
-        capa da anterior em silêncio. Enquanto não há sucesso, a key fica
-        fixa em 'novo', então um erro de validação não apaga o que a pessoa
-        já tinha digitado.
+        A `key` é o id da área que está sendo criada. Ele muda quando uma
+        criação dá certo — createArea revalida esta rota, a página roda de
+        novo no servidor e manda um id novo —, e trocar a key força o React a
+        REMONTAR o CoverField em vez de reaproveitar a instância.
+
+        Sem isto: CoverField guarda a URL num useState interno (input
+        controlado), e o reset automático que o React 19 faz nos campos não
+        controlados depois de uma action bem-sucedida não alcança esse estado
+        — a URL continuava na caixa e a próxima área herdava a capa da
+        anterior em silêncio. Erro de validação não muda a key, então o que a
+        pessoa já tinha preenchido continua lá.
       */}
-      <CoverField key={state?.ok ? state.data.id : 'novo'} name="coverUrl" largura={1600} altura={1000} />
+      <CoverField
+        key={novoId}
+        name="coverUrl"
+        largura={1600}
+        altura={1000}
+        escopo="area"
+        entidadeId={novoId}
+      />
       <Field label="Posição" htmlFor="position" hint="Ordem na vitrine">
         <Input id="position" name="position" type="number" min={0} max={999} defaultValue={0} />
       </Field>

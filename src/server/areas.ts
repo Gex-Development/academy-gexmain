@@ -97,10 +97,25 @@ export async function createArea(_prev: unknown, formData: FormData): Promise<Ac
     const slug = slugify(parsed.data.name)
     if (!slug) return { ok: false, error: 'O nome precisa conter letras ou números.' }
 
+    // Id opcional vindo do formulário (area-form.tsx o gera no navegador).
+    // Existe para o upload de capa poder acontecer ANTES de a área existir:
+    // o arquivo é guardado em `area/<id>/...`, então o id precisa ser
+    // conhecido antes da gravação. Lido separado do areaSchema porque esse
+    // schema também serve o updateArea, que já trata o id do seu jeito.
+    //
+    // Ausente, o Postgres gera como sempre — quem chamar sem id continua
+    // funcionando igual.
+    const idBruto = formData.get('id')
+    const idInformado = z.string().uuid().safeParse(idBruto)
+    if (idBruto != null && idBruto !== '' && !idInformado.success) {
+      return { ok: false, error: 'Identificador inválido.' }
+    }
+
     const supabase = await createServerSupabase()
     const { data, error } = await supabase
       .from('areas')
       .insert({
+        ...(idInformado.success ? { id: idInformado.data } : {}),
         name: parsed.data.name,
         slug,
         description: parsed.data.description || null,
@@ -118,9 +133,16 @@ export async function createArea(_prev: unknown, formData: FormData): Promise<Ac
       // nome", para o admin conseguir agir (tentar um nome mais distinto) em
       // vez de ficar procurando um nome idêntico que não existe.
       if (error.code === '23505') {
+        // Duas constraints únicas diferentes chegam aqui com o mesmo código.
+        // Sem distinguir, uma área criada duas vezes pelo mesmo formulário
+        // (id repetido) mostraria "nome parecido" — mandando a pessoa
+        // procurar um conflito de nome que não existe.
+        const violouChavePrimaria = `${error.message} ${error.details ?? ''}`.includes('areas_pkey')
         return {
           ok: false,
-          error: 'Já existe uma área com um nome parecido (o identificador gerado colide com o de outra área).',
+          error: violouChavePrimaria
+            ? 'Esta área já foi criada. Atualize a página para vê-la na lista.'
+            : 'Já existe uma área com um nome parecido (o identificador gerado colide com o de outra área).',
         }
       }
       throw error

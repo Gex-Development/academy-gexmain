@@ -174,6 +174,46 @@ describe('RLS: corte imediato de pessoa inativa (auth_is_active)', () => {
   })
 })
 
+// createArea passa a aceitar um id vindo do formulário, para o upload de capa
+// poder acontecer antes de a área existir (o arquivo mora em `area/<id>/...`).
+// A action em si precisa de cookies() e não roda aqui; o que dá para provar
+// contra o banco de verdade é o que ela depende: que a coluna aceita um id
+// explícito e que um repetido é recusado.
+describe('area com id fornecido pelo cliente', () => {
+  it('a tabela aceita um id explícito e o preserva', async () => {
+    const id = crypto.randomUUID()
+    const { data, error } = await db
+      .from('areas')
+      .insert({ id, name: 'Id Explícito', slug: `id-explicito-${Date.now()}` })
+      .select('id')
+      .single()
+    expect(error).toBeNull()
+    lixeira.area(data!.id)
+    expect(data!.id).toBe(id)
+  })
+
+  it('id repetido é recusado pela chave primária, não silenciosamente aceito', async () => {
+    const id = crypto.randomUUID()
+    const primeira = await db
+      .from('areas')
+      .insert({ id, name: 'Id Repetido', slug: `id-repetido-a-${Date.now()}` })
+      .select('id')
+      .single()
+    expect(primeira.error).toBeNull()
+    lixeira.area(primeira.data!.id)
+
+    // Slug diferente de propósito: isola a colisão de ID da colisão de slug,
+    // que também devolve 23505 e tem outra mensagem na action.
+    const { error } = await db
+      .from('areas')
+      .insert({ id, name: 'Id Repetido', slug: `id-repetido-b-${Date.now()}` })
+    expect(error?.code).toBe('23505')
+    // A action distingue as duas pelo nome da constraint; se ele mudar, a
+    // mensagem volta a ser a errada e ninguém perceberia sem esta asserção.
+    expect(`${error?.message} ${error?.details ?? ''}`).toContain('areas_pkey')
+  })
+})
+
 describe('capa da área', () => {
   it('admin grava e lê a capa; a coluna aceita nulo', async () => {
     const nome = `Área Capa ${Date.now()}`

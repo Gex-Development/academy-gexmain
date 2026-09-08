@@ -11,6 +11,31 @@ import { Input } from './input'
 const ACCEPT = Object.keys(ALLOWED_CAPA_MIME).join(',')
 
 /**
+ * Ícone de enviar imagem. Inline, e não de uma biblioteca: é o único ícone
+ * deste componente, e `currentColor` faz ele seguir a cor de texto de quem o
+ * envolve — então funciona nos dois temas sem citar cor nenhuma, que é a
+ * regra do projeto.
+ */
+function IconeEnviar({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 16V4" />
+      <path d="m7 9 5-5 5 5" />
+      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </svg>
+  )
+}
+
+/**
  * Campo de URL de capa com um retângulo na proporção real.
  *
  * O retângulo existe por um pedido concreto do dono do produto: quem vai
@@ -149,8 +174,14 @@ export function CoverField({
     // eslint-disable-next-line @next/next/no-img-element
     <img src={url} alt="" className="h-full w-full object-cover" />
   ) : (
-    <span className="text-xs text-texto-suave">
-      {largura} × {altura} px
+    <span className="flex flex-col items-center gap-2 text-texto-suave">
+      {/* O ícone só aparece quando dá para enviar. Sem upload, o retângulo é
+          só uma régua de medida — um ícone de enviar ali prometeria uma ação
+          que não existe. */}
+      {podeEnviar && <IconeEnviar className="h-8 w-8" />}
+      <span className="text-xs">
+        {largura} × {altura} px
+      </span>
     </span>
   )
 
@@ -185,13 +216,40 @@ export function CoverField({
           <label
             htmlFor={arquivoId}
             className={cn(
-              'relative flex items-center justify-center overflow-hidden rounded-card border border-dashed border-borda bg-fundo',
+              'group relative flex items-center justify-center overflow-hidden rounded-card border border-dashed border-borda bg-fundo',
               enviando ? 'cursor-wait' : 'cursor-pointer',
             )}
             style={{ aspectRatio: `${largura} / ${altura}` }}
           >
-            <span className="sr-only">Escolher arquivo de imagem para a capa</span>
+            <span className="sr-only">
+              {url ? 'Trocar a imagem da capa' : 'Escolher arquivo de imagem para a capa'}
+            </span>
             {conteudo}
+            {url && !enviando && (
+              <>
+                {/*
+                  Duas peças para o mesmo recado, porque hover sozinho não
+                  alcança todo mundo: o selo do canto fica SEMPRE visível —
+                  em tela de toque não existe passar o mouse, e sem ele não
+                  haveria pista nenhuma de que a capa é trocável. A faixa
+                  aparece no hover E no foco do teclado (group-focus-within),
+                  senão quem navega por Tab nunca a veria.
+                */}
+                <span
+                  aria-hidden="true"
+                  className="absolute right-2 top-2 rounded-full bg-fundo/80 p-1.5 text-texto-suave"
+                >
+                  <IconeEnviar className="h-4 w-4" />
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-fundo/80 text-texto opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none"
+                >
+                  <IconeEnviar className="h-7 w-7" />
+                  <span className="text-xs font-medium">Trocar imagem</span>
+                </span>
+              </>
+            )}
             {enviando && (
               // Visível nos dois ramos (com capa já preenchida OU vazio):
               // sem isto, alguém reenviando a capa de um curso que já TEM

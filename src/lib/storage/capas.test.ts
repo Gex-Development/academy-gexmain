@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCapaPath, MAX_CAPA_BYTES, validateCapa } from './capas'
+import { buildCapaPath, caminhoDaCapa, MAX_CAPA_BYTES, validateCapa } from './capas'
 
 const png = { name: 'capa.png', type: 'image/png', size: 1024 }
 
@@ -76,5 +76,39 @@ describe('buildCapaPath', () => {
     const a = buildCapaPath('area', areaId, 'capa.png')
     const b = buildCapaPath('area', areaId, 'capa.png')
     expect(a).not.toBe(b)
+  })
+})
+
+// ── Faxina de capas órfãs ───────────────────────────────────────────────────
+// Arquivo no bucket que nenhuma área ou curso referencia. Acontece quando
+// alguém escolhe a imagem e abandona o formulário: o upload já subiu, a
+// entidade nunca foi salva.
+describe('caminhoDaCapa', () => {
+  const BASE = 'https://projeto.supabase.co'
+  const publica = (caminho: string) => `${BASE}/storage/v1/object/public/capas/${caminho}`
+
+  it('extrai o caminho de uma URL pública do nosso bucket', () => {
+    expect(caminhoDaCapa(publica('area/abc/capa.png'), BASE)).toBe('area/abc/capa.png')
+  })
+
+  it('devolve null para URL colada de fora — não é nossa para apagar', () => {
+    expect(caminhoDaCapa('https://exemplo-externo.com/imagens/capa.png', BASE)).toBeNull()
+  })
+
+  it('devolve null para outro bucket do MESMO projeto', () => {
+    // lesson-attachments é privado e não tem nada a ver com capa; confundir
+    // os dois faria a faxina apagar anexo de aula.
+    expect(
+      caminhoDaCapa(`${BASE}/storage/v1/object/public/lesson-attachments/a/b.pdf`, BASE),
+    ).toBeNull()
+  })
+
+  it('devolve null para URL nula ou vazia', () => {
+    expect(caminhoDaCapa(null, BASE)).toBeNull()
+    expect(caminhoDaCapa('', BASE)).toBeNull()
+  })
+
+  it('devolve null para o mesmo caminho em OUTRO projeto Supabase', () => {
+    expect(caminhoDaCapa(`https://outro.supabase.co/storage/v1/object/public/capas/a/b.png`, BASE)).toBeNull()
   })
 })

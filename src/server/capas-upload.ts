@@ -12,7 +12,13 @@
 // teste direto, não só de leitura de código.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@/lib/supabase/database.types'
-import { CAPA_BUCKET, buildCapaPath, validateCapa, type CapaEscopo } from '@/lib/storage/capas'
+import {
+  CAPA_BUCKET,
+  buildCapaPath,
+  caminhoDaCapa,
+  validateCapa,
+  type CapaEscopo,
+} from '@/lib/storage/capas'
 import { fail, ok, type ActionResult } from './result'
 
 type AdminClient = SupabaseClient<Database>
@@ -117,16 +123,16 @@ export async function verifyCapaUpload(
 }
 
 /**
- * Devolve o caminho de um objeto do bucket 'capas' a partir da sua URL
- * pública, ou null se a URL não é do nosso bucket (ex.: uma URL colada de
- * fora — essa não é nossa para apagar). getPublicUrl() não tem uma função
- * inversa pronta no SDK; a extração aqui é a mesma string que getPublicUrl
- * produz, só andada de trás para a frente.
+ * Caminho de um objeto do bucket 'capas' a partir da URL pública, ou null se
+ * a URL não é nossa (ex.: colada de fora — essa não é nossa para apagar).
+ *
+ * A regra em si mora em lib/storage/capas.ts, junto com a faxina de órfãs,
+ * que precisa exatamente da mesma resposta. Aqui só se acrescenta a base do
+ * ambiente. Duas cópias desta regra a dois arquivos de distância seria a
+ * receita para uma divergir da outra — e esta decide o que pode ser APAGADO.
  */
 function extrairCaminhoCapa(url: string): string | null {
-  const prefixo = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${CAPA_BUCKET}/`
-  if (!url.startsWith(prefixo)) return null
-  return url.slice(prefixo.length)
+  return caminhoDaCapa(url, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '')
 }
 
 /**
