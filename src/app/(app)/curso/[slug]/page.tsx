@@ -21,7 +21,21 @@ export default async function CursoPage({ params }: { params: Promise<{ slug: st
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-xl font-semibold">{course.title}</h1>
+      {/* Mesmo link de voltar da tela da aula, que já apontava para o curso.
+          Sem ele, quem entrava num curso pela vitrine só saía pelo botão do
+          navegador ou pelo menu — e a página da aula, um nível abaixo, tinha
+          a saída que esta não tinha.
+
+          Volta para a ÁREA de onde a pessoa veio; a trilha inicial não tem
+          área, então volta para o início. */}
+      <Link
+        href={course.areaSlug ? `/area/${course.areaSlug}` : '/'}
+        className="text-xs text-texto-suave hover:underline"
+      >
+        ← {course.areaName ?? 'Início'}
+      </Link>
+
+      <h1 className="mt-2 text-xl font-semibold">{course.title}</h1>
       <p className="mt-1 text-xs text-texto-suave">
         {course.areaName ?? 'Trilha inicial'} · {course.lessons.length}{' '}
         {course.lessons.length === 1 ? 'aula' : 'aulas'}
