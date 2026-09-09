@@ -21,7 +21,12 @@ test('colaborador ativo entra e vê a navegação de colaborador', async ({ page
   await expect(page.getByRole('heading', { name: 'Olá, Ana' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Início' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Pessoas' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Gerenciar' })).toHaveCount(0)
+  // 'Cursos' é o RÓTULO do link para /gerenciar. Ele já se chamou
+  // 'Gerenciar'; quando o texto mudou, esta linha continuou procurando o
+  // nome antigo e passou a valer por vacuidade — passaria mesmo se o link
+  // estivesse aparecendo para quem não pode gerenciar. Se o rótulo mudar de
+  // novo, esta linha muda junto.
+  await expect(page.getByRole('link', { name: 'Cursos' })).toHaveCount(0)
 })
 
 test('colaborador abre o próprio perfil e salva o nome', async ({ page }) => {

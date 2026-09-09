@@ -6,7 +6,10 @@ const INICIO: NavLink = { href: '/', label: 'Início' }
 const PERFIL: NavLink = { href: '/perfil', label: 'Perfil' }
 
 const GESTAO: NavLink[] = [
-  { href: '/gerenciar', label: 'Gerenciar' },
+  // O rótulo é 'Cursos', mas a rota continua /gerenciar: mudar a rota
+  // quebraria links já enviados por e-mail e os que existem espalhados pelo
+  // código. Os testes deste arquivo checam href, não texto — de propósito.
+  { href: '/gerenciar', label: 'Cursos' },
   { href: '/gerenciar/duvidas', label: 'Dúvidas' },
   { href: '/gerenciar/progresso', label: 'Progresso' },
 ]

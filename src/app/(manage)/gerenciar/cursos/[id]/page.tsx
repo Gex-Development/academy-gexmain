@@ -13,7 +13,7 @@ export default async function EditarCursoPage({ params }: { params: Promise<{ id
   return (
     <div className="grid gap-8 md:grid-cols-[1fr_360px]">
       <section>
-        <Voltar href="/gerenciar">Gerenciar</Voltar>
+        <Voltar href="/gerenciar">Cursos</Voltar>
         <h1 className="mt-2 text-xl font-semibold">{course.title}</h1>
         <p className="mb-6 mt-1 text-sm text-texto-suave">
           {course.isOnboarding ? 'Trilha inicial' : (course.areaName ?? 'Sem área')}
