@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Voltar } from '@/components/layout/voltar'
 import { LockedCourse } from '@/components/catalog/locked-course'
 import { ProgressBar } from '@/components/progress/progress-bar'
 import { formatDuration } from '@/lib/format'
@@ -28,12 +29,9 @@ export default async function CursoPage({ params }: { params: Promise<{ slug: st
 
           Volta para a ÁREA de onde a pessoa veio; a trilha inicial não tem
           área, então volta para o início. */}
-      <Link
-        href={course.areaSlug ? `/area/${course.areaSlug}` : '/'}
-        className="text-xs text-texto-suave hover:underline"
-      >
-        ← {course.areaName ?? 'Início'}
-      </Link>
+      <Voltar href={course.areaSlug ? `/area/${course.areaSlug}` : '/'}>
+        {course.areaName ?? 'Início'}
+      </Voltar>
 
       <h1 className="mt-2 text-xl font-semibold">{course.title}</h1>
       <p className="mt-1 text-xs text-texto-suave">

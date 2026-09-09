@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Voltar } from '@/components/layout/voltar'
 import { getManagedCourse } from '@/server/courses'
 import { NewLessonForm } from './new-lesson-form'
 
@@ -21,9 +21,7 @@ export default async function NovaAulaPage({ params }: { params: Promise<{ id: s
 
   return (
     <div>
-      <Link href={`/gerenciar/cursos/${id}`} className="text-xs text-texto-suave hover:underline">
-        ← Voltar ao curso
-      </Link>
+      <Voltar href={`/gerenciar/cursos/${id}`}>{curso.title}</Voltar>
       <h1 className="mb-1 mt-2 text-xl font-semibold">Nova aula</h1>
       <p className="mb-6 text-sm text-texto-suave">{curso.title}</p>
       <NewLessonForm courseId={id} />

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Voltar } from '@/components/layout/voltar'
 import { CompleteButton } from '@/components/progress/complete-button'
 import { ForumSection } from '@/components/forum/forum-section'
 import { VideoPlayer } from '@/components/video/video-player'
@@ -29,9 +30,7 @@ export default async function AulaPage({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href={`/curso/${course.slug}`} className="text-xs text-texto-suave hover:underline">
-        ← {course.title}
-      </Link>
+      <Voltar href={`/curso/${course.slug}`}>{course.title}</Voltar>
 
       <h1 className="mb-4 mt-2 text-xl font-semibold">{lesson.title}</h1>
 

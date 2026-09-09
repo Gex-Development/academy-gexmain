@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { Voltar } from '@/components/layout/voltar'
 import { CourseCard } from '@/components/catalog/course-card'
 import { listAreas } from '@/server/areas'
 import { getCatalog } from '@/server/catalog'
@@ -51,6 +52,8 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
 
   return (
     <div className="flex flex-col gap-8">
+      <Voltar href="/">Início</Voltar>
+
       <section
         className={`relative overflow-hidden rounded-card border border-borda ${
           semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
