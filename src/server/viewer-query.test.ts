@@ -12,7 +12,7 @@ function linha(over: Partial<LinhaCursoView> = {}): LinhaCursoView {
     status: 'published',
     is_onboarding: false,
     area_id: 'area-trafego',
-    areas: { name: 'Tráfego', color: '#2f6bff' },
+    areas: { name: 'Tráfego', slug: 'trafego', color: '#2f6bff' },
     lessons: [
       { id: 'l1', slug: 'aula-1', title: 'Aula 1', duration_seconds: 300, status: 'published', position: 0 },
       { id: 'l2', slug: 'aula-2', title: 'Aula 2', duration_seconds: 600, status: 'published', position: 1 },
@@ -52,6 +52,7 @@ describe('paraCourseView — a propriedade que a tarefa existe para garantir', (
       description: 'Descrição do curso.',
       coverUrl: 'https://exemplo.com/capa.jpg',
       areaName: 'Tráfego',
+      areaSlug: 'trafego',
       areaColor: '#2f6bff',
       isOnboarding: false,
       access: 'none',
@@ -117,7 +118,8 @@ describe('paraCourseView — a propriedade que a tarefa existe para garantir', (
   it('CourseView nunca carrega campo de vídeo ou anexo — só as chaves do tipo', () => {
     const view = paraCourseView(linha(), lider, new Set())
     expect(Object.keys(view!).sort()).toEqual(
-      ['access', 'areaColor', 'areaName', 'coverUrl', 'description', 'id', 'isOnboarding', 'lessons', 'slug', 'title'].sort(),
+      ['access', 'areaColor', 'areaName',
+      'areaSlug', 'coverUrl', 'description', 'id', 'isOnboarding', 'lessons', 'slug', 'title'].sort(),
     )
     expect(Object.keys(view!.lessons[0]!).sort()).toEqual(['durationSeconds', 'id', 'slug', 'title'].sort())
   })

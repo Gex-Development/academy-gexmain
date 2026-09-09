@@ -104,10 +104,21 @@ export async function createCourse(
     const slugBase = slugify(parsed.data.title)
     if (!slugBase) return { ok: false, error: 'O título precisa conter letras ou números.' }
 
+    // Id opcional vindo do formulário (course-form.tsx o recebe da página,
+    // gerado no servidor). Existe para o upload de capa acontecer ANTES de o
+    // curso existir: o arquivo mora em `curso/<id>/...`, então o id precisa
+    // ser conhecido antes da gravação. Ausente, o Postgres gera como sempre.
+    const idBruto = formData.get('id')
+    const idInformado = z.string().uuid().safeParse(idBruto)
+    if (idBruto != null && idBruto !== '' && !idInformado.success) {
+      return { ok: false, error: 'Identificador inválido.' }
+    }
+
     const supabase = await createServerSupabase()
     const { data, error } = await supabase
       .from('courses')
       .insert({
+        ...(idInformado.success ? { id: idInformado.data } : {}),
         title: parsed.data.title,
         slug: `${slugBase}-${Date.now().toString(36)}`,
         description: parsed.data.description || null,
@@ -121,15 +132,21 @@ export async function createCourse(
       .single()
 
     if (error) {
-      // 'courses' tem duas constraints únicas (slug, e o índice parcial que
-      // permite só uma trilha inicial) — as duas levantam 23505. Por isso o
-      // código sozinho não basta para decidir qual mensagem mostrar (ao
-      // contrário de areas.ts, que só tem uma constraint única e onde o
-      // código isolado já é inequívoco): precisa ancorar no código estável
-      // E discriminar pelo nome da constraint, ou uma colisão de slug comum
-      // mostraria "já existe uma trilha inicial" para quem só bateu o slug.
-      if (error.code === '23505' && error.message.includes('courses_uma_trilha_inicial')) {
-        return { ok: false, error: 'Já existe uma trilha inicial na plataforma.' }
+      // 'courses' tem mais de uma constraint única — slug, o índice parcial
+      // que permite só uma trilha inicial, e a chave primária, que passou a
+      // poder colidir agora que o id pode vir do formulário. Todas levantam
+      // 23505, então o código sozinho não decide a mensagem: é preciso
+      // ancorar no código estável E discriminar pelo nome da constraint, ou
+      // uma colisão qualquer mostraria "já existe uma trilha inicial".
+      // (O mesmo vale hoje para areas.ts, que também ganhou id explícito.)
+      if (error.code === '23505') {
+        const detalhe = `${error.message} ${error.details ?? ''}`
+        if (detalhe.includes('courses_uma_trilha_inicial')) {
+          return { ok: false, error: 'Já existe uma trilha inicial na plataforma.' }
+        }
+        if (detalhe.includes('courses_pkey')) {
+          return { ok: false, error: 'Este curso já foi criado. Atualize a página para vê-lo na lista.' }
+        }
       }
       throw error
     }

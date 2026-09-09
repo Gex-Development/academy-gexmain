@@ -1304,3 +1304,57 @@ describe('RLS — area_access: só admin concede área extra', () => {
     expect(depois).toEqual(antes)
   })
 })
+
+// Excluir aula é a operação mais destrutiva da tela de gerenciar: leva junto o
+// progresso de quem já assistiu. A action checa papel e curso gerenciado, mas
+// a última palavra é do RLS — é ele que vale se alguém chamar a API direto.
+//
+// DELETE negado por RLS não devolve erro: a política de USING simplesmente não
+// casa linha nenhuma e a operação "tem sucesso" apagando zero. Por isso toda
+// asserção aqui é sobre a linha CONTINUAR existindo, nunca sobre erro.
+describe('RLS — só quem gerencia o curso apaga a aula', () => {
+  it('colaborador não apaga aula do curso da própria área', async () => {
+    const cliente = await authClient(emailTrafego)
+    await cliente.from('lessons').delete().eq('id', aulaTrafego)
+
+    const { data } = await db.from('lessons').select('id').eq('id', aulaTrafego)
+    expect(data).toHaveLength(1)
+  })
+
+  it('líder NÃO apaga aula de área que não é a dele — ser líder não basta', async () => {
+    const cliente = await authClient(emailLiderTrafego)
+    await cliente.from('lessons').delete().eq('id', aulaDesignAlheio)
+
+    const { data } = await db.from('lessons').select('id').eq('id', aulaDesignAlheio)
+    expect(data).toHaveLength(1)
+  })
+
+  // Controle. Sem ele, os dois testes acima passariam mesmo se a exclusão
+  // estivesse quebrada para TODO MUNDO — provariam que ninguém apaga, não que
+  // a política nega pelo motivo certo.
+  it('líder apaga aula da própria área', async () => {
+    const { data: descartavel, error } = await db
+      .from('lessons')
+      .insert({
+        course_id: cursoTrafego,
+        title: 'Aula Descartável',
+        slug: `aula-descartavel-${Date.now()}`,
+        video_provider: 'youtube',
+        video_ref: 'dQw4w9WgXcQ',
+        status: 'draft',
+      })
+      .select('id')
+      .single()
+    if (error) throw error
+    // Sem registro na lixeira de propósito: ela não trata aula, e não
+    // precisa — a aula cai por cascata quando o curso desta suíte é
+    // apagado. Se o teste falhar antes do delete, a limpeza do curso leva
+    // esta aula junto.
+
+    const cliente = await authClient(emailLiderTrafego)
+    await cliente.from('lessons').delete().eq('id', descartavel!.id)
+
+    const { data } = await db.from('lessons').select('id').eq('id', descartavel!.id)
+    expect(data).toEqual([])
+  })
+})

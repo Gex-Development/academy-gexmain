@@ -1,5 +1,5 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { Voltar } from '@/components/layout/voltar'
 import { listAttachments } from '@/server/attachments'
 import { getLessonForEdit } from '@/server/lessons'
 import { AttachmentManager } from './attachment-manager'
@@ -18,9 +18,7 @@ export default async function EditarAulaPage({
 
   return (
     <div>
-      <Link href={`/gerenciar/cursos/${id}`} className="text-xs text-texto-suave hover:underline">
-        ← Voltar ao curso
-      </Link>
+      <Voltar href={`/gerenciar/cursos/${id}`}>Voltar ao curso</Voltar>
       <h1 className="mb-6 mt-2 text-xl font-semibold">{lesson.title}</h1>
       <LessonForm lesson={lesson} />
       <div className="mt-8 max-w-md">

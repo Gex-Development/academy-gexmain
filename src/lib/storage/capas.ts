@@ -42,3 +42,24 @@ export function buildCapaPath(escopo: CapaEscopo, id: string, fileName: string):
   const prefixo = `${escopo}/${id}`
   return extensao ? `${prefixo}/${unico}-${nome}.${extensao}` : `${prefixo}/${unico}-${nome}`
 }
+
+/**
+ * O caminho de um arquivo DENTRO do bucket de capas, ou null quando a URL
+ * não é nossa.
+ *
+ * `baseUrl` entra por parâmetro em vez de sair de process.env para a função
+ * ficar pura — testável sem ambiente, e usável tanto pelo servidor quanto
+ * por um script solto (scripts/limpar-capas-orfas.mjs).
+ *
+ * Devolver null é a resposta segura, e é o que protege dois casos que a
+ * faxina e a exclusão de capa substituída não podem confundir com "nosso":
+ * URL colada de um site de fora, e outro bucket do MESMO projeto — sem essa
+ * segunda checagem, um caminho de lesson-attachments passaria por capa.
+ */
+export function caminhoDaCapa(url: string | null | undefined, baseUrl: string): string | null {
+  if (!url) return null
+  const prefixo = `${baseUrl}/storage/v1/object/public/${CAPA_BUCKET}/`
+  if (!url.startsWith(prefixo)) return null
+  const caminho = url.slice(prefixo.length)
+  return caminho || null
+}

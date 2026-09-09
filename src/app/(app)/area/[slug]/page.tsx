@@ -1,8 +1,9 @@
 import { notFound } from 'next/navigation'
+import { Voltar } from '@/components/layout/voltar'
 import { CourseCard } from '@/components/catalog/course-card'
 import { listAreas } from '@/server/areas'
 import { getCatalog } from '@/server/catalog'
-import { selecionarEmAndamento } from '@/server/vitrine-query'
+import { dadosDaArea, selecionarEmAndamento } from '@/server/vitrine-query'
 
 /*
  * A página reusa getCatalog() em vez de uma consulta por área.
@@ -28,13 +29,17 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
   // notFound(), o que transformava toda área recém-criada num 404 assim que
   // ela virou clicável na home. Só quando não há grupo é que consultamos a
   // lista de áreas: no caminho comum, com curso, não há consulta extra.
-  const areaVazia = grupo ? null : (await listAreas()).find((a) => a.slug === slug)
-  if (!grupo && !areaVazia) notFound()
+  const areaVazia = grupo ? undefined : (await listAreas()).find((a) => a.slug === slug)
 
-  const nome = grupo?.areaName ?? areaVazia!.name
-  const capaDaArea = grupo?.areaCoverUrl ?? areaVazia!.coverUrl
-  const corDaArea = grupo?.areaColor ?? areaVazia!.color
-  const itens = grupo?.items ?? []
+  // A escolha da fonte mora em dadosDaArea (vitrine-query.ts), função pura e
+  // testada. Ficava aqui, campo a campo com `??`, e era um defeito: `??`
+  // pergunta "este valor é nulo?", não "existe grupo?" — então área COM curso
+  // e SEM cor caía no ramo da área vazia, que é undefined justamente porque o
+  // grupo existe.
+  const area = dadosDaArea(grupo, areaVazia)
+  if (!area) notFound()
+
+  const { nome, capaUrl: capaDaArea, cor: corDaArea, itens } = area
 
   const emAndamento = selecionarEmAndamento(itens)
 
@@ -47,6 +52,8 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
 
   return (
     <div className="flex flex-col gap-8">
+      <Voltar href="/">Início</Voltar>
+
       <section
         className={`relative overflow-hidden rounded-card border border-borda ${
           semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'

@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/cn'
 import { CoverField } from '@/components/ui/cover-field'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -41,13 +42,35 @@ export function CourseSettings({ course }: { course: ManagedCourse }) {
         </Button>
       </form>
 
-      <form action={statusAction} className="border-t border-borda pt-4">
+      <form
+        action={statusAction}
+        className="border-t border-borda pt-4"
+        onSubmit={(e) => {
+          // Mesma regra da aula: confirmação só ao DESPUBLICAR. Aqui o
+          // alcance é maior — o curso some da vitrine de toda a empresa.
+          if (
+            !publicando &&
+            !confirm(
+              `Tirar "${course.title}" da vitrine? O curso deixa de aparecer para toda a empresa. O progresso dos alunos é preservado.`,
+            )
+          ) {
+            e.preventDefault()
+          }
+        }}
+      >
         <input type="hidden" name="id" value={course.id} />
         <input type="hidden" name="status" value={publicando ? 'published' : 'draft'} />
-        <p className="mb-2 text-xs text-texto-suave">
+        <p className="mb-2 flex items-center gap-2 text-xs font-medium">
+          <span
+            aria-hidden="true"
+            className={cn('h-2 w-2 rounded-full', publicando ? 'bg-texto-suave' : 'bg-sucesso')}
+          />
+          {publicando ? 'Em rascunho' : 'Publicado'}
+        </p>
+        <p className="mb-3 text-xs text-texto-suave">
           {publicando
             ? 'Publicar deixa o curso visível na vitrine de toda a empresa.'
-            : 'Despublicar tira o curso da vitrine. O progresso dos alunos é preservado.'}
+            : 'Visível na vitrine para toda a empresa.'}
         </p>
         {statusState && !statusState.ok && (
           <p role="alert" className="mb-2 text-xs text-perigo">
@@ -55,7 +78,7 @@ export function CourseSettings({ course }: { course: ManagedCourse }) {
           </p>
         )}
         <Button type="submit" disabled={changing}>
-          {publicando ? 'Publicar curso' : 'Voltar para rascunho'}
+          {publicando ? 'Publicar curso' : 'Despublicar'}
         </Button>
       </form>
     </div>

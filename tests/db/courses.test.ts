@@ -151,6 +151,61 @@ describe('cursos', () => {
 // "aulas publicadas" aqui em vez de importar a função real provaria a
 // suposição do teste, não o código de produção — é exatamente o tipo de
 // regressão silenciosa contra a qual isto precisa proteger.
+// createCourse passa a aceitar um id vindo do formulário, para o upload de
+// capa poder acontecer antes de o curso existir (o arquivo mora em
+// `curso/<id>/...`). A action precisa de cookies() e não roda aqui; o que dá
+// para provar contra o banco é aquilo de que ela depende.
+describe('curso com id fornecido pelo cliente', () => {
+  it('a tabela aceita um id explícito e o preserva', async () => {
+    const id = crypto.randomUUID()
+    const { data, error } = await db
+      .from('courses')
+      .insert({
+        id,
+        title: 'Id Explícito',
+        slug: `curso-id-explicito-${Date.now()}`,
+        area_id: areaTrafego,
+        owner_id: ownerId,
+      })
+      .select('id')
+      .single()
+    expect(error).toBeNull()
+    lixeira.curso(data!.id)
+    expect(data!.id).toBe(id)
+  })
+
+  it('id repetido é recusado pela chave primária, com o nome que a action procura', async () => {
+    const id = crypto.randomUUID()
+    const primeiro = await db
+      .from('courses')
+      .insert({
+        id,
+        title: 'Id Repetido',
+        slug: `curso-id-repetido-a-${Date.now()}`,
+        area_id: areaTrafego,
+        owner_id: ownerId,
+      })
+      .select('id')
+      .single()
+    expect(primeiro.error).toBeNull()
+    lixeira.curso(primeiro.data!.id)
+
+    // Slug diferente de propósito: 'courses' tem TRÊS constraints únicas que
+    // devolvem 23505 (slug, trilha inicial, chave primária), e createCourse
+    // escolhe a mensagem pelo NOME delas. Se o nome mudar, a pessoa passa a
+    // ver "já existe uma trilha inicial" para uma colisão de id.
+    const { error } = await db.from('courses').insert({
+      id,
+      title: 'Id Repetido',
+      slug: `curso-id-repetido-b-${Date.now()}`,
+      area_id: areaTrafego,
+      owner_id: ownerId,
+    })
+    expect(error?.code).toBe('23505')
+    expect(`${error?.message} ${error?.details ?? ''}`).toContain('courses_pkey')
+  })
+})
+
 describe('regra de publicação: nunca com zero aulas publicadas', () => {
   it('curso sem nenhuma aula não pode ser publicado', async () => {
     const { data: course } = await db

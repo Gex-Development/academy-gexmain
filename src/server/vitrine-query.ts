@@ -219,9 +219,56 @@ export function corDaAreaDoCurso(catalog: Catalog, slug: string): string | null 
  *
  * Só filtra: a ordem de entrada, já decidida pelo catálogo, é preservada.
  */
-export function selecionarEmAndamento(items: CatalogItem[]): CatalogItem[] {
+export function selecionarEmAndamento(items: readonly CatalogItem[]): CatalogItem[] {
   return items.filter(
     (item) =>
       item.access !== 'none' && item.progress.completed > 0 && item.progress.completed < item.progress.total,
   )
+}
+
+export type DadosDaArea = {
+  nome: string
+  capaUrl: string | null
+  cor: string | null
+  itens: readonly CatalogItem[]
+}
+
+/**
+ * O que a página de uma área precisa mostrar, venha de onde vier.
+ *
+ * Duas fontes possíveis: o grupo do catálogo (área COM curso publicado) ou a
+ * linha da tabela de áreas (área que existe mas ainda não tem curso). Devolve
+ * null quando não há nem uma nem outra — é o 404 da página.
+ *
+ * A FONTE É ESCOLHIDA UMA VEZ, não campo a campo. Essa distinção não é
+ * estilo: a versão anterior fazia `grupo?.areaColor ?? areaVazia!.color` em
+ * cada linha, e `??` não pergunta "existe grupo?", pergunta "este valor é
+ * nulo?". Uma área COM curso e SEM cor caía no ramo da área vazia, que é
+ * null justamente porque o grupo existe — TypeError em toda área com curso
+ * publicado e cor não preenchida, que é o estado das quatro áreas reais.
+ *
+ * Havendo os dois, o grupo ganha: ele vem do catálogo, que já passou pela
+ * decisão de acesso curso a curso.
+ */
+export function dadosDaArea(
+  grupo: Catalog['grupos'][number] | undefined,
+  areaSemCurso: AreaRow | undefined,
+): DadosDaArea | null {
+  if (grupo) {
+    return {
+      nome: grupo.areaName,
+      capaUrl: grupo.areaCoverUrl,
+      cor: grupo.areaColor,
+      itens: grupo.items,
+    }
+  }
+  if (areaSemCurso) {
+    return {
+      nome: areaSemCurso.name,
+      capaUrl: areaSemCurso.coverUrl,
+      cor: areaSemCurso.color,
+      itens: [],
+    }
+  }
+  return null
 }
