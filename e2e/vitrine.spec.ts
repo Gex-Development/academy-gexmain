@@ -207,27 +207,24 @@ test('vitrine: home mostra as duas capas, área liberada abre o curso, área blo
 
     await entrar(page, emailColaborador)
 
-    // Home: a capa da própria área aparece com a imagem configurada e sem
-    // marca de bloqueio; a capa da outra área aparece com "sem acesso" — mas
-    // as duas continuam na grade (nenhuma some por falta de acesso).
-    const capaMinha = page.locator('li').filter({ hasText: nomeAreaMinha })
-    await expect(capaMinha.getByText(nomeAreaMinha)).toBeVisible()
-    await expect(capaMinha.locator('img')).toHaveAttribute('src', urlCapa)
-    await expect(capaMinha.getByText('sem acesso')).toHaveCount(0)
+    // Home em fileiras (spec 2026-09-29): uma seção por área, com os cursos
+    // dela. O curso não tem capa própria — a reserva usa a capa da ÁREA
+    // (spec, seção 9.4), então o <img> do card é a urlCapa.
+    const fileiraMinha = page.getByRole('region', { name: nomeAreaMinha })
+    await expect(fileiraMinha.getByRole('heading', { name: nomeAreaMinha })).toBeVisible()
+    const cardMinha = fileiraMinha.locator('li').filter({ hasText: tituloCursoMinha })
+    await expect(cardMinha.locator('img')).toHaveAttribute('src', urlCapa)
+    await expect(cardMinha.getByText('Curso bloqueado')).toHaveCount(0)
 
-    const capaOutra = page.locator('li').filter({ hasText: nomeAreaOutra })
-    await expect(capaOutra.getByText(nomeAreaOutra)).toBeVisible()
-    await expect(capaOutra.getByText('sem acesso')).toBeVisible()
+    const fileiraOutra = page.getByRole('region', { name: nomeAreaOutra })
+    await expect(fileiraOutra.locator('li').filter({ hasText: tituloCursoOutra }).getByText('Curso bloqueado')).toBeAttached()
 
-    // Clique na capa da própria área: leva para /area/<slug> e mostra o
-    // curso daquela área na grade "Todos os cursos".
-    await capaMinha.getByRole('link').click({ timeout: TIMEOUT_CLIQUE })
+    await fileiraMinha
+      .getByRole('link', { name: `Ver todos os cursos de ${nomeAreaMinha}` })
+      .click({ timeout: TIMEOUT_CLIQUE })
     await expect(page).toHaveURL(`/area/${areaMinha.slug}`)
     await expect(page.getByRole('heading', { name: tituloCursoMinha })).toBeVisible()
 
-    // Clique no curso: a página do curso abre de verdade (não a tela de
-    // bloqueio, que também tem <h1> com o título — por isso a aula listada,
-    // ausente na tela de bloqueio, é quem prova o acesso de fato).
     await page
       .locator('li')
       .filter({ hasText: tituloCursoMinha })
@@ -237,13 +234,10 @@ test('vitrine: home mostra as duas capas, área liberada abre o curso, área blo
     await expect(page.getByRole('heading', { name: tituloCursoMinha })).toBeVisible()
     await expect(page.getByText(tituloAulaMinha)).toBeVisible()
 
-    // Volta para a home e clica na área bloqueada: a página abre — não é um
-    // beco sem saída — e mostra o curso dela com cadeado.
     await page.goto('/')
     await page
-      .locator('li')
-      .filter({ hasText: nomeAreaOutra })
-      .getByRole('link')
+      .getByRole('region', { name: nomeAreaOutra })
+      .getByRole('link', { name: `Ver todos os cursos de ${nomeAreaOutra}` })
       .click({ timeout: TIMEOUT_CLIQUE })
     await expect(page).toHaveURL(`/area/${areaOutra.slug}`)
 

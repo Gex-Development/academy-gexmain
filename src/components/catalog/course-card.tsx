@@ -1,68 +1,63 @@
 import Link from 'next/link'
-import { ProgressBar } from '@/components/progress/progress-bar'
+import { cn } from '@/lib/cn'
 import type { CatalogItem } from '@/server/catalog'
+import { capaComReserva } from '@/server/vitrine-query'
 
-export function CourseCard({ item }: { item: CatalogItem }) {
+/**
+ * Card de curso compartilhado pelas fileiras da home e pela grade da área
+ * (spec 2026-09-29, seção 8.1). Sem vidro de propósito: a capa já é imagem,
+ * e vidro sobre imagem é o "vidro em tudo" que a spec proíbe.
+ */
+export function CourseCard({ item, className }: { item: CatalogItem; className?: string }) {
   const bloqueado = item.access === 'none'
-  // Mesma cadeia de três degraus de area-card.tsx (item 3 da revisão de
-  // branch): imagem → cor da área → gradiente da marca. Sem o terceiro
-  // degrau, um curso sem capa E sem cor de área (herdada da própria área)
-  // caía no bg-capa-fundo chapado — #221f20 sozinho contra o #131213 do
-  // fundo da página dá 1,14:1, o mesmo defeito que o item 3 corrigiu em
-  // area-card.tsx mas que ficou de fora aqui por um artefato de ordem: este
-  // arquivo copiou a forma de area-card.tsx ANTES do item 3 acrescentar o
-  // gradiente.
-  const semReserva = !item.coverUrl && !item.areaColor
-
-  const capa = (
-    <div
-      className={`relative aspect-video w-full overflow-hidden rounded-card border border-borda ${
-        semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
-      }`}
-      style={item.areaColor && !item.coverUrl ? { backgroundColor: item.areaColor } : undefined}
-    >
-      {item.coverUrl && (
-        // Capa é URL externa informada pelo líder; next/image exigiria allowlist de domínio.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.coverUrl} alt="" className="h-full w-full object-cover" />
-      )}
-      {bloqueado && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/45">
-          <span aria-hidden className="text-2xl">
-            🔒
-          </span>
-          <span className="sr-only">Curso bloqueado</span>
-        </div>
-      )}
-    </div>
-  )
-
-  const corpo = (
-    <>
-      {capa}
-      <h3 className="mt-2 text-sm font-medium">{item.title}</h3>
-      <p className="text-xs text-texto-suave">
-        {item.areaName ?? 'Trilha inicial'} · {item.lessonCount}{' '}
-        {item.lessonCount === 1 ? 'aula' : 'aulas'}
-        {item.requestStatus === 'pending' && ' · acesso solicitado'}
-      </p>
-      {item.access !== 'none' && item.progress.total > 0 && (
-        <div className="mt-2">
-          <ProgressBar completed={item.progress.completed} total={item.progress.total} />
-        </div>
-      )}
-    </>
-  )
+  const capa = capaComReserva(item)
+  const comecou = !bloqueado && item.progress.completed > 0
+  const percent = item.progress.percent
 
   return (
-    <li>
+    <li className={className}>
       <Link
         href={`/curso/${item.slug}`}
-        // ring-acao, igual area-card.tsx: os dois cards dividem a mesma
-        // grade em /area/[slug] e devem indicar foco com o mesmo tom.
-        className="block rounded-card focus:outline-none focus:ring-2 focus:ring-acao"
+        className="group block rounded-card focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
       >
-        {corpo}
+        {/* Reserva final de capa (from-azul to-ciano): tokens fixos, iguais
+            nos dois temas — sobre eles só vai o cadeado, nunca texto. */}
+        <div
+          className={cn(
+            'relative aspect-[16/10] overflow-hidden rounded-card border border-vidro-borda',
+            capa ? 'bg-capa-fundo' : 'bg-gradient-to-br from-azul to-ciano',
+          )}
+        >
+          {capa && (
+            // Capa é URL externa; next/image exigiria allowlist de domínio.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={capa}
+              alt=""
+              className={cn(
+                'h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none',
+                bloqueado && 'opacity-45 grayscale',
+              )}
+            />
+          )}
+          {bloqueado && (
+            <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
+              <span aria-hidden>🔒</span>
+              <span className="sr-only">Curso bloqueado</span>
+            </span>
+          )}
+          {comecou && (
+            <div className="absolute inset-x-0 bottom-0 h-1 bg-black/40">
+              <div className="h-full bg-gradient-to-r from-azul to-ciano" style={{ width: `${percent}%` }} />
+            </div>
+          )}
+        </div>
+        <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-texto">{item.title}</h3>
+        <p className="mt-0.5 text-xs text-texto-suave">
+          {item.lessonCount} {item.lessonCount === 1 ? 'aula' : 'aulas'}
+          {comecou && ` · ${percent}%`}
+          {bloqueado && item.requestStatus === 'pending' && ' · acesso solicitado'}
+        </p>
       </Link>
     </li>
   )

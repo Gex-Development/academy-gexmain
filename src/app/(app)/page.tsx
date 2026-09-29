@@ -1,101 +1,88 @@
-import { AreaCard } from '@/components/catalog/area-card'
-import { HeroBanner } from '@/components/catalog/hero-banner'
-import { listAreas } from '@/server/areas'
+import { DestaqueHome } from '@/components/catalog/destaque-home'
+import { FileiraArea } from '@/components/catalog/fileira-area'
+import { FiltrosProgresso } from '@/components/catalog/filtros-progresso'
 import { getCurrentUser } from '@/lib/auth/session'
+import { listAreas } from '@/server/areas'
 import { getCatalog } from '@/server/catalog'
 import { getContinueWatching } from '@/server/progress'
-import { capaDoCurso, corDaAreaDoCurso, escolherDestaque, montarVitrine } from '@/server/vitrine-query'
+import {
+  capaComReserva,
+  escolherDestaque,
+  itemDoCatalogo,
+  lerFiltro,
+  montarFileiras,
+} from '@/server/vitrine-query'
 
 export const metadata = { title: 'Início — GEX Academy' }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const filtro = lerFiltro((await searchParams).filtro)
+
   const [user, catalog, continuar, todasAsAreas] = await Promise.all([
     getCurrentUser(),
     getCatalog(),
     getContinueWatching(),
-    // O catálogo parte de CURSOS: área recém-criada, ainda sem curso
-    // publicado, não gera grupo e sumiria da home. listAreas() completa a
-    // vitrine com essas — é a mesma consulta que o admin já usa, legível por
-    // qualquer colaborador ativo por RLS (política areas_leitura), então não
-    // é superfície de acesso nova.
+    // Áreas sem curso publicado não geram grupo no catálogo; listAreas()
+    // completa as fileiras com elas ("Em breve"). Mesma consulta do admin,
+    // legível por qualquer colaborador ativo (RLS areas_leitura).
     listAreas(),
   ])
 
-  const areas = montarVitrine(catalog, todasAsAreas)
-  // escolherDestaque (vitrine-query.ts) é a autoridade nos três ramos —
-  // testada caso a caso, inclusive as bordas sem trilha no sistema e sem
-  // acesso a ela. O JSX abaixo pergunta a ELA (destaque.tipo), nunca decide
-  // de novo a partir de `continuar`: o `&& continuar` no ramo 'retomada' é
-  // só o estreitamento de tipo que o TypeScript exige, não uma segunda
-  // opinião — se uma regra nova entrar em escolherDestaque amanhã, é aqui
-  // que o efeito aparece. Sem trilha nem retomada, não se inventa destaque:
-  // banner falso é pior que ausência de banner, e fica o cabeçalho de
-  // saudação simples.
+  // escolherDestaque continua a autoridade: trilha pendente primeiro, depois
+  // retomada. O filtro NÃO age no destaque (spec, seção 5).
   const destaque = escolherDestaque(catalog.onboarding, continuar !== null)
+  const fileiras = montarFileiras(catalog, todasAsAreas, filtro)
+  const primeiroNome = user!.fullName.split(' ')[0]
 
   return (
     <div className="flex flex-col gap-10">
+      <header className="flex flex-col gap-5">
+        <h1 className="text-3xl font-semibold tracking-tight text-texto">Olá, {primeiroNome}</h1>
+        <FiltrosProgresso ativo={filtro} />
+      </header>
+
       {destaque.tipo === 'trilha' ? (
-        <HeroBanner
+        <DestaqueHome
           rotulo="Comece por aqui"
           titulo={destaque.item.title}
-          subtitulo={
-            destaque.item.description ??
-            `${destaque.item.lessonCount} ${destaque.item.lessonCount === 1 ? 'aula' : 'aulas'} sobre a empresa`
-          }
-          coverUrl={destaque.item.coverUrl}
-          color={destaque.item.areaColor}
-          // DESVIO DE SPEC, registrado (tabela §3 de
-          // docs/superpowers/specs/2026-09-01-gex-academy-vitrine-design.md):
-          // a §5.1.1 pede que o botão aponte para a PRÓXIMA AULA NÃO
-          // CONCLUÍDA, não para o índice do curso. Resolver isso direito
-          // exige uma consulta nova nesta página (lista de aulas do curso +
-          // progresso, algo como getCourseView(destaque.item.slug) — o
-          // catalog não carrega aula nenhuma, de propósito, ver o comentário
-          // em catalog.ts) — por isso ficou só registrado, não implementado,
-          // até essa consulta ser aprovada.
+          detalhe={`Trilha inicial · ${destaque.item.lessonCount} ${destaque.item.lessonCount === 1 ? 'aula' : 'aulas'}`}
+          capaUrl={capaComReserva(destaque.item)}
+          concluidas={destaque.item.progress.completed}
+          total={destaque.item.progress.total}
           href={`/curso/${destaque.item.slug}`}
           textoBotao={destaque.item.progress.completed > 0 ? 'Continuar' : 'Começar'}
         />
       ) : destaque.tipo === 'retomada' && continuar ? (
-        <HeroBanner
-          rotulo="Continue de onde parou"
-          titulo={continuar.lessonTitle}
-          subtitulo={continuar.courseTitle}
-          // A §5.1.2 da spec pede a capa do CURSO aqui. getContinueWatching
-          // não devolve capa (não é dela); o catalog já está inteiro em
-          // memória nesta mesma requisição, então capaDoCurso só procura o
-          // slug nele — zero consulta nova (ver o comentário em
-          // vitrine-query.ts). Como o banco real não tem trilha inicial
-          // hoje, este é o banner que a maioria das pessoas vai ver.
-          coverUrl={capaDoCurso(catalog, continuar.courseSlug)}
-          color={corDaAreaDoCurso(catalog, continuar.courseSlug)}
-          href={`/curso/${continuar.courseSlug}/aula/${continuar.lessonSlug}`}
-          textoBotao="Continuar"
-        />
-      ) : (
-        <header>
-          <h1 className="text-xl font-semibold">Olá, {user!.fullName.split(' ')[0]}</h1>
-        </header>
-      )}
+        (() => {
+          const item = itemDoCatalogo(catalog, continuar.courseSlug)
+          return (
+            <DestaqueHome
+              rotulo="Continue de onde parou"
+              titulo={continuar.courseTitle}
+              detalhe={`Aula ${continuar.lessonNumber} de ${continuar.lessonCount} · ${continuar.lessonTitle}`}
+              capaUrl={item ? capaComReserva(item) : null}
+              concluidas={continuar.completedCount}
+              total={continuar.lessonCount}
+              href={`/curso/${continuar.courseSlug}/aula/${continuar.lessonSlug}`}
+              textoBotao="Continuar"
+            />
+          )
+        })()
+      ) : null}
 
-      <section>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-texto-suave">
-          Explore por área
-        </h2>
-        {areas.length === 0 ? (
-          <p className="text-sm text-texto-suave">
-            Nenhuma área cadastrada ainda. Assim que o administrador criar as áreas, elas aparecem
-            aqui.
-          </p>
-        ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {areas.map((area) => (
-              <AreaCard key={area.key} area={area} />
-            ))}
-          </ul>
-        )}
-      </section>
+      {fileiras.length === 0 ? (
+        <p className="text-sm text-texto-suave">
+          {filtro === 'tudo'
+            ? 'Nenhuma área cadastrada ainda. Assim que o administrador criar as áreas, elas aparecem aqui.'
+            : 'Nenhum curso neste filtro.'}
+        </p>
+      ) : (
+        fileiras.map((fileira) => <FileiraArea key={fileira.key} fileira={fileira} />)
+      )}
     </div>
   )
 }
