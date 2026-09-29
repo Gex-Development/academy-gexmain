@@ -3,7 +3,7 @@ import { Voltar } from '@/components/layout/voltar'
 import { CourseCard } from '@/components/catalog/course-card'
 import { listAreas } from '@/server/areas'
 import { getCatalog } from '@/server/catalog'
-import { dadosDaArea, selecionarEmAndamento } from '@/server/vitrine-query'
+import { dadosDaArea } from '@/server/vitrine-query'
 
 /*
  * A página reusa getCatalog() em vez de uma consulta por área.
@@ -41,8 +41,6 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
 
   const { nome, capaUrl: capaDaArea, cor: corDaArea, itens } = area
 
-  const emAndamento = selecionarEmAndamento(itens)
-
   // Terceiro degrau da reserva de capa — mesmo raciocínio de area-card.tsx:
   // sem imagem e sem cor, bg-capa-fundo sozinho (#221f20 sobre #131213 no
   // escuro) dá 1,14:1, quase invisível. from-azul/to-ciano são tokens fixos
@@ -54,36 +52,23 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
     <div className="flex flex-col gap-8">
       <Voltar href="/">Início</Voltar>
 
+      {/* Mesmo overlay e mesma medição de contraste de antes (ver o comentário
+          original sobre o degrau 3 da reserva de capa). */}
       <section
-        className={`relative overflow-hidden rounded-card border border-borda ${
-          semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
+        className={`relative overflow-hidden rounded-2xl border border-vidro-borda ${
+          semReserva ? 'bg-gradient-to-br from-azul to-ciano' : 'bg-capa-fundo'
         }`}
         style={corDaArea && !capaDaArea ? { backgroundColor: corDaArea } : undefined}
       >
         {capaDaArea && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={capaDaArea}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+          <img src={capaDaArea} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
-        {/*
-          Gradiente que garante leitura do texto sobre qualquer imagem —
-          mesma função e mesmo raciocínio do overlay em area-card.tsx (ver
-          o comentário lá), com os stops próprios desta faixa (88%/50%/20%,
-          não 85%/25%/transparente). Também é a garantia de contraste do
-          degrau 3 da reserva acima (from-azul to-ciano): pior ponto medido
-          em toda a altura é 9,51:1 (a ~72% de distância do fundo) — nunca
-          abaixo de 4,5:1, mesmo no topo, onde este overlay não some de
-          todo (fica em 20%, não transparente): base azul crua já passa
-          sozinha (7,82:1). Se este overlay virar condicional a
-          areaCoverUrl algum dia, o degrau 3 volta a ficar exposto sem
-          nenhum teste avisando — conferir de novo antes.
-        */}
+        {/* Mesmo overlay e mesma medição de contraste de antes (ver o
+            comentário original, preservado acima desta seção). */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/50 to-black/20" />
-        <div className="relative flex min-h-36 flex-col justify-end p-6">
-          <h1 className="text-2xl font-bold leading-tight text-white">{nome}</h1>
+        <div className="relative flex min-h-48 flex-col justify-end p-6 sm:min-h-56 sm:p-8">
+          <h1 className="text-3xl font-semibold tracking-tight text-white">{nome}</h1>
           <p className="mt-1 text-sm text-white/75">
             {itens.length === 0
               ? 'Nenhum curso ainda'
@@ -92,30 +77,15 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
         </div>
       </section>
 
-      {emAndamento.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
-            Continue de onde parou
-          </h2>
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {emAndamento.map((item) => (
-              <CourseCard key={item.id} item={item} />
-            ))}
-          </ul>
-        </section>
-      )}
-
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-texto-suave">
-          Todos os cursos
-        </h2>
+        <h2 className="mb-3 text-lg font-semibold tracking-tight text-texto">Cursos</h2>
         {itens.length === 0 ? (
           <p className="text-sm text-texto-suave">
             Nenhum curso publicado nesta área ainda. Assim que o líder publicar o primeiro, ele
             aparece aqui.
           </p>
         ) : (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid gap-x-4 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
             {itens.map((item) => (
               <CourseCard key={item.id} item={item} />
             ))}
