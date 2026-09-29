@@ -11,6 +11,7 @@ import {
   escolherDestaque,
   itemDoCatalogo,
   lerFiltro,
+  linhaDaTrilha,
   montarFileiras,
 } from '@/server/vitrine-query'
 
@@ -36,6 +37,11 @@ export default async function HomePage({
   // escolherDestaque continua a autoridade: trilha pendente primeiro, depois
   // retomada. O filtro NÃO age no destaque (spec, seção 5).
   const destaque = escolherDestaque(catalog.onboarding, continuar !== null)
+  // Revisão final, Important #1: a trilha some do banner quando concluída
+  // (ou sem acesso), mas não pode sumir da home inteira — linhaDaTrilha põe
+  // uma fileira de um card só no topo, sujeita ao filtro ativo (some em
+  // "Não iniciados", aparece em "Concluídos").
+  const trilha = linhaDaTrilha(catalog.onboarding, destaque, filtro)
   const fileiras = montarFileiras(catalog, todasAsAreas, filtro)
   // Rodada de correção 1: com dado real, a maioria das áreas não tem curso
   // publicado — uma FileiraArea cheia por área vazia virava uma parede de
@@ -81,7 +87,7 @@ export default async function HomePage({
         })()
       ) : null}
 
-      {fileiras.length === 0 ? (
+      {fileiras.length === 0 && !trilha ? (
         <p className="text-sm text-texto-suave">
           {filtro === 'tudo'
             ? 'Nenhuma área cadastrada ainda. Assim que o administrador criar as áreas, elas aparecem aqui.'
@@ -89,6 +95,7 @@ export default async function HomePage({
         </p>
       ) : (
         <>
+          {trilha && <FileiraArea fileira={trilha} />}
           {fileirasComCurso.map((fileira) => (
             <FileiraArea key={fileira.key} fileira={fileira} />
           ))}

@@ -7,6 +7,7 @@ import {
   escolherDestaque,
   itemDoCatalogo,
   lerFiltro,
+  linhaDaTrilha,
   montarFileiras,
   passaNoFiltro,
 } from './vitrine-query'
@@ -112,6 +113,20 @@ describe('escolherDestaque', () => {
 
   it('sem trilha e sem retomada → nenhum', () => {
     expect(escolherDestaque(null, false)).toEqual({ tipo: 'nenhum' })
+  })
+
+  // Revisão final, Important #1: percent é arredondado (Math.round), então
+  // uma trilha longa quase concluída já mede 100% antes de completed==total.
+  // escolherDestaque tem que comparar completed/total, não percent, ou a
+  // trilha sai do destaque uma aula antes da hora.
+  it('199 de 200 aulas: percent já arredonda pra 100, mas completed < total — continua trilha', () => {
+    const onboarding = item({
+      isOnboarding: true,
+      access: 'view',
+      progress: { completed: 199, total: 200, percent: 100 },
+    })
+
+    expect(escolherDestaque(onboarding, true)).toEqual({ tipo: 'trilha', item: onboarding })
   })
 })
 
@@ -286,5 +301,59 @@ describe('montarFileiras', () => {
   it('nada passa no filtro → nenhuma fileira', () => {
     const cat = catalogo([grupo({ items: [item({ progress: p(0, 3) })] })])
     expect(montarFileiras(cat, [], 'concluidos')).toEqual([])
+  })
+})
+
+// Revisão final, Important #1: antes desta correção a trilha só aparecia
+// como destaque do banner — concluída, ela não tinha área própria para
+// entrar numa FileiraArea, e sumia da home por completo (só alcançável
+// digitando /curso/<slug> na mão). linhaDaTrilha é o que devolve o caminho.
+describe('linhaDaTrilha', () => {
+  const p = (completed: number, total: number) => ({ completed, total, percent: total ? Math.round((completed / total) * 100) : 0 })
+
+  it('sem trilha no catálogo → nenhuma fileira', () => {
+    expect(linhaDaTrilha(null, { tipo: 'nenhum' }, 'tudo')).toBeNull()
+  })
+
+  it('trilha ainda é o destaque (pendente) → não duplica na fileira', () => {
+    const onboarding = item({ isOnboarding: true, access: 'view', progress: p(1, 4) })
+    const destaque = escolherDestaque(onboarding, false)
+    expect(destaque.tipo).toBe('trilha')
+    expect(linhaDaTrilha(onboarding, destaque, 'tudo')).toBeNull()
+  })
+
+  it('trilha concluída continua acessível e aparece em Concluídos', () => {
+    const onboarding = item({
+      id: 'trilha-1',
+      slug: 'trilha-inicial',
+      isOnboarding: true,
+      access: 'view',
+      progress: p(4, 4),
+    })
+    // Concluída: já não é mais o destaque do banner.
+    const destaque = escolherDestaque(onboarding, false)
+    expect(destaque).toEqual({ tipo: 'nenhum' })
+
+    const fileira = linhaDaTrilha(onboarding, destaque, 'concluidos')
+    expect(fileira).toEqual({
+      key: 'trilha-inicial',
+      areaName: 'Trilha inicial',
+      areaSlug: null,
+      areaCoverUrl: null,
+      items: [onboarding],
+    })
+  })
+
+  it('trilha concluída não aparece em "Não iniciados" nem "Continuar"', () => {
+    const onboarding = item({ isOnboarding: true, access: 'view', progress: p(4, 4) })
+    const destaque = escolherDestaque(onboarding, false)
+    expect(linhaDaTrilha(onboarding, destaque, 'nao-iniciados')).toBeNull()
+    expect(linhaDaTrilha(onboarding, destaque, 'continuar')).toBeNull()
+  })
+
+  it('trilha concluída aparece em "Tudo"', () => {
+    const onboarding = item({ isOnboarding: true, access: 'view', progress: p(4, 4) })
+    const destaque = escolherDestaque(onboarding, false)
+    expect(linhaDaTrilha(onboarding, destaque, 'tudo')?.items).toEqual([onboarding])
   })
 })

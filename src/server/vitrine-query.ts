@@ -22,7 +22,10 @@ export type DestaqueHome =
  * quando ela não existe, já foi concluída, ou a pessoa não tem acesso (nível
  * 'none') é que "continue de onde parou" assume. Sem os dois, não se inventa
  * destaque: banner falso é pior que ausência de banner (fica com quem chama
- * mostrar o cabeçalho de saudação nesse caso).
+ * mostrar o cabeçalho de saudação nesse caso). Uma trilha concluída (ou
+ * quase — ver o comentário sobre arredondamento abaixo) não fica sem lugar
+ * nenhum na home: quando ela deixa de ser o destaque, `linhaDaTrilha` (logo
+ * abaixo) põe uma fileira "Trilha inicial" no topo das fileiras.
  *
  * `temRetomada` é só um booleano — a função não precisa saber a forma do
  * "continue de onde parou" (isso é responsabilidade de getContinueWatching),
@@ -34,7 +37,13 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
   // para toda trilha PUBLICADA vista por gente ATIVA, e getCatalog() só traz
   // curso publicado para usuário ativo — as duas condições que `onboarding`,
   // quando não-nulo, já garante.
-  if (onboarding !== null && onboarding.access !== 'none' && onboarding.progress.percent < 100) {
+  //
+  // `completed < total`, não `percent < 100`: percent é arredondado
+  // (Math.round, ver buildProgress em src/lib/progress/percent.ts), então
+  // uma trilha de 200 aulas com 199 concluídas já mede 100% e sumiria do
+  // destaque uma aula antes de realmente terminar. completed/total não
+  // arredonda nada.
+  if (onboarding !== null && onboarding.access !== 'none' && onboarding.progress.completed < onboarding.progress.total) {
     return { tipo: 'trilha', item: onboarding }
   }
   if (temRetomada) {
@@ -152,10 +161,15 @@ export function capaComReserva(item: { coverUrl: string | null; areaCoverUrl: st
 }
 
 export type Fileira = {
-  /** Chave estável de lista React: o areaId. */
+  /** Chave estável de lista React: o areaId (ou 'trilha-inicial' — ver linhaDaTrilha). */
   key: string
   areaName: string
-  areaSlug: string
+  /**
+   * Slug da ÁREA, para o link "Ver tudo →". `null` só na fileira "Trilha
+   * inicial" (linhaDaTrilha): ela não é uma área, não tem página própria —
+   * FileiraArea omite o link quando `areaSlug` é nulo.
+   */
+  areaSlug: string | null
   /**
    * Capa da ÁREA — do grupo do catálogo quando ela tem curso publicado,
    * senão da própria linha de `areas` (ver montarFileiras). Alimenta o
@@ -168,10 +182,45 @@ export type Fileira = {
 }
 
 /**
+ * A fileira "Trilha inicial" (revisão final, Important #1): a trilha é
+ * curso, não área, então nunca aparece em `montarFileiras`. Enquanto está
+ * pendente ela já tem o destaque do banner (escolherDestaque) — repeti-la
+ * aqui embaixo seria redundante. Mas assim que ela deixa de ser o destaque
+ * (concluída, ou — caso defensivo — sem acesso), ela também não tem área
+ * própria para aparecer numa FileiraArea: sem esta fileira, um hire que
+ * termina o onboarding perde o único caminho de volta para a trilha (o link
+ * direto `/curso/<slug>` continua funcionando, mas não é navegável a partir
+ * da UI).
+ *
+ * `passaNoFiltro` decide se ela aparece: uma trilha concluída passa em
+ * "Concluídos" e some em "Não iniciados"/"Continuar", igual a qualquer outro
+ * curso. `null` quando não há trilha, quando ela ainda é o destaque, ou
+ * quando não passa no filtro ativo.
+ */
+export function linhaDaTrilha(
+  onboarding: CatalogItem | null,
+  destaque: DestaqueHome,
+  filtro: FiltroProgresso,
+): Fileira | null {
+  if (onboarding === null) return null
+  if (destaque.tipo === 'trilha') return null
+  if (!passaNoFiltro(onboarding, filtro)) return null
+
+  return {
+    key: 'trilha-inicial',
+    areaName: 'Trilha inicial',
+    areaSlug: null,
+    areaCoverUrl: null,
+    items: [onboarding],
+  }
+}
+
+/**
  * As fileiras da home (spec, seção 5): uma por área, na ordem do catálogo,
  * com as áreas sem curso no fim. Com filtro, fileira que esvazia some — e
  * área sem curso também, porque "Em breve" não é resposta a "Continuar".
- * A trilha inicial não entra: ela é curso, não área, e tem o destaque.
+ * A trilha inicial não entra aqui: ela é curso, não área — quem chama
+ * (a home) prepõe a fileira de linhaDaTrilha separadamente.
  */
 export function montarFileiras(
   catalog: Catalog,

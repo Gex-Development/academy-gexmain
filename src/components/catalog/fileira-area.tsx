@@ -13,13 +13,18 @@ export function FileiraArea({ fileira }: { fileira: Fileira }) {
         <h2 id={`fileira-${fileira.key}`} className="text-lg font-semibold tracking-tight text-texto">
           {fileira.areaName}
         </h2>
-        <Link
-          href={`/area/${fileira.areaSlug}`}
-          aria-label={`Ver todos os cursos de ${fileira.areaName}`}
-          className="shrink-0 rounded text-sm text-texto-suave transition-colors hover:text-texto focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
-        >
-          Ver tudo →
-        </Link>
+        {/* areaSlug é nulo só na fileira "Trilha inicial" (vitrine-query.ts,
+            linhaDaTrilha): a trilha não é área, não tem página própria para
+            "Ver tudo →" apontar. */}
+        {fileira.areaSlug && (
+          <Link
+            href={`/area/${fileira.areaSlug}`}
+            aria-label={`Ver todos os cursos de ${fileira.areaName}`}
+            className="shrink-0 rounded text-sm text-texto-suave transition-colors hover:text-texto focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
+          >
+            Ver tudo →
+          </Link>
+        )}
       </div>
       {/* -mx/px: a rolagem vai até a borda da tela no celular, sem a página
           ganhar rolagem horizontal (Review Focus 5). Só cursos aqui: uma
