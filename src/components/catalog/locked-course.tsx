@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { capaComReserva } from '@/server/vitrine-query'
 import type { CourseView } from '@/server/viewer'
 import { RequestAccessForm } from './request-access-form'
 
@@ -16,7 +17,8 @@ export function LockedCourse({
   // ficava 1,00:1 contra o próprio contêiner — literalmente a mesma cor,
   // distinguível só pela borda de 1px. from-azul/to-ciano quebra esse
   // empate porque nenhum dos dois é igual a bg-superficie em tema nenhum.
-  const semReserva = !course.coverUrl && !course.areaColor
+  const capa = capaComReserva({ coverUrl: course.coverUrl, areaCoverUrl: course.areaCoverUrl })
+  const semReserva = !capa && !course.areaColor
 
   return (
     <div className="mx-auto max-w-lg">
@@ -30,19 +32,19 @@ export function LockedCourse({
         ← {course.areaName ?? 'Início'}
       </Link>
 
-      <div className="rounded-card border border-borda bg-superficie p-8 text-center">
+      <div className="rounded-2xl border border-vidro-borda bg-vidro p-8 text-center backdrop-blur-md">
         <div
           className={`aspect-video w-full overflow-hidden rounded-card border border-borda ${
             semReserva ? 'bg-gradient-to-b from-azul to-ciano' : 'bg-capa-fundo'
           }`}
-          style={course.areaColor && !course.coverUrl ? { backgroundColor: course.areaColor } : undefined}
+          style={course.areaColor && !capa ? { backgroundColor: course.areaColor } : undefined}
         >
-          {course.coverUrl && (
+          {capa && (
             // Capa é URL externa informada pelo líder; next/image exigiria allowlist de domínio.
             // Mesmo mecanismo de course-card.tsx: a capa de um curso bloqueado já é
             // exibida na vitrine, então não é uma fronteira de confiança nova aqui.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={course.coverUrl} alt="" className="h-full w-full object-cover" />
+            <img src={capa} alt="" className="h-full w-full object-cover" />
           )}
       </div>
 

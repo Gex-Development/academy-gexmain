@@ -27,6 +27,8 @@ export type CourseView = {
   /** Slug da ÁREA (não do curso). Serve ao link de voltar da tela do curso. */
   areaSlug: string | null
   areaColor: string | null
+  /** Capa da ÁREA — reserva quando o curso não tem capa própria (spec 2026-09-29, seção 9.4). */
+  areaCoverUrl: string | null
   isOnboarding: boolean
   access: AccessLevel
   lessons: { id: string; slug: string; title: string; durationSeconds: number | null }[]
@@ -50,7 +52,7 @@ export type LessonView = {
 }
 
 export const SELECT_CURSO_VIEW =
-  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name, slug, color), lessons(id, slug, title, duration_seconds, status, position)'
+  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name, slug, color, cover_url), lessons(id, slug, title, duration_seconds, status, position)'
 
 export type LinhaCursoView = {
   id: string
@@ -61,7 +63,7 @@ export type LinhaCursoView = {
   status: string
   is_onboarding: boolean
   area_id: string | null
-  areas: { name: string; slug: string; color: string | null } | null
+  areas: { name: string; slug: string; color: string | null; cover_url: string | null } | null
   lessons: {
     id: string
     slug: string
@@ -125,6 +127,7 @@ export function paraCourseView(
     areaName: row.areas?.name ?? null,
     areaSlug: row.areas?.slug ?? null,
     areaColor: row.areas?.color ?? null,
+    areaCoverUrl: row.areas?.cover_url ?? null,
     isOnboarding: row.is_onboarding,
     access,
     lessons,

@@ -1,11 +1,13 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Voltar } from '@/components/layout/voltar'
 import { LockedCourse } from '@/components/catalog/locked-course'
-import { ProgressBar } from '@/components/progress/progress-bar'
+import { BannerCurso } from '@/components/curso/banner-curso'
+import { ListaDeEpisodios } from '@/components/curso/lista-de-episodios'
+import { VoltarCircular } from '@/components/layout/voltar-circular'
 import { formatDuration } from '@/lib/format'
+import { acaoDoCurso, estadoDasAulas } from '@/lib/progress/proxima-aula'
 import { getPendingRequestStatus } from '@/server/access-requests'
 import { getCompletedLessonIds } from '@/server/progress'
+import { capaComReserva } from '@/server/vitrine-query'
 import { getCourseView } from '@/server/viewer'
 
 export default async function CursoPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -19,53 +21,44 @@ export default async function CursoPage({ params }: { params: Promise<{ slug: st
   }
 
   const concluidas = await getCompletedLessonIds(course.id)
+  const acao = acaoDoCurso(course.lessons, concluidas)
+  const estados = estadoDasAulas(course.lessons, concluidas)
+  const concluidasNoCurso = course.lessons.filter((l) => concluidas.has(l.id)).length
+  const capa = capaComReserva({ coverUrl: course.coverUrl, areaCoverUrl: course.areaCoverUrl })
+  const totalSegundos = course.lessons.reduce((soma, l) => soma + (l.durationSeconds ?? 0), 0)
+
+  const botao =
+    acao.tipo === 'nenhuma'
+      ? null
+      : {
+          href: `/curso/${course.slug}/aula/${course.lessons[acao.indice]!.slug}`,
+          texto:
+            acao.tipo === 'comecar' ? 'Começar' : acao.tipo === 'continuar' ? `Continuar aula ${acao.indice + 1}` : 'Rever curso',
+        }
 
   return (
-    <div className="mx-auto max-w-3xl">
-      {/* Mesmo link de voltar da tela da aula, que já apontava para o curso.
-          Sem ele, quem entrava num curso pela vitrine só saía pelo botão do
-          navegador ou pelo menu — e a página da aula, um nível abaixo, tinha
-          a saída que esta não tinha.
+    <div className="mx-auto flex max-w-5xl flex-col gap-6">
+      <VoltarCircular href={course.areaSlug ? `/area/${course.areaSlug}` : '/'} rotulo={course.areaName ?? 'Início'} />
 
-          Volta para a ÁREA de onde a pessoa veio; a trilha inicial não tem
-          área, então volta para o início. */}
-      <Voltar href={course.areaSlug ? `/area/${course.areaSlug}` : '/'}>
-        {course.areaName ?? 'Início'}
-      </Voltar>
+      <BannerCurso
+        rotulo={`${course.areaName ?? 'Trilha inicial'} · ${course.lessons.length} ${course.lessons.length === 1 ? 'aula' : 'aulas'}`}
+        titulo={course.title}
+        descricao={course.description}
+        capaUrl={capa}
+        concluidas={concluidasNoCurso}
+        total={course.lessons.length}
+        acao={botao}
+      />
 
-      <h1 className="mt-2 text-xl font-semibold">{course.title}</h1>
-      <p className="mt-1 text-xs text-texto-suave">
-        {course.areaName ?? 'Trilha inicial'} · {course.lessons.length}{' '}
-        {course.lessons.length === 1 ? 'aula' : 'aulas'}
-      </p>
-      {course.description && <p className="mt-4 text-sm text-texto-suave">{course.description}</p>}
-
-      <div className="mt-4">
-        <ProgressBar completed={concluidas.size} total={course.lessons.length} />
-      </div>
-
-      <ol className="mt-8 divide-y divide-borda rounded-card border border-borda bg-superficie">
-        {course.lessons.length === 0 && (
-          <li className="px-4 py-6 text-center text-sm text-texto-suave">
-            Este curso ainda não tem aulas publicadas.
-          </li>
-        )}
-        {course.lessons.map((lesson, indice) => (
-          <li key={lesson.id}>
-            <Link
-              href={`/curso/${course.slug}/aula/${lesson.slug}`}
-              className="flex items-center gap-3 px-4 py-3 hover:bg-fundo"
-            >
-              <span className="w-6 text-xs text-texto-suave">{indice + 1}</span>
-              <span aria-hidden className="w-4 text-sucesso">
-                {concluidas.has(lesson.id) ? '✓' : ''}
-              </span>
-              <span className="flex-1 text-sm">{lesson.title}</span>
-              <span className="text-xs text-texto-suave">{formatDuration(lesson.durationSeconds)}</span>
-            </Link>
-          </li>
-        ))}
-      </ol>
+      <section>
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold tracking-tight text-texto">Aulas</h2>
+          {totalSegundos > 0 && <span className="text-sm text-texto-suave">{formatDuration(totalSegundos)}</span>}
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-vidro-borda bg-vidro backdrop-blur-md">
+          <ListaDeEpisodios courseSlug={course.slug} aulas={course.lessons} estados={estados} capaUrl={capa} />
+        </div>
+      </section>
     </div>
   )
 }
