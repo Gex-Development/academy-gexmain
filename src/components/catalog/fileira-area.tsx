@@ -25,8 +25,12 @@ export function FileiraArea({ fileira }: { fileira: Fileira }) {
           ganhar rolagem horizontal (Review Focus 5). Só cursos aqui: uma
           área sem curso publicado não vira FileiraArea — ela entra na
           fileira "Em breve" única (fileira-em-breve.tsx, rodada de correção
-          1), montada pela página a partir das fileiras com `items` vazio. */}
-      <ul className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
+          1), montada pela página a partir das fileiras com `items` vazio.
+          scroll-px-4: scroll-snap ignora o padding do <ul> (o `px-4` acima),
+          então sem isso o 1º card snapa na borda do -mx-4, 16px mais à
+          esquerda que o heading (rodada de correção 2) — scroll-padding
+          alinha a linha de snap com a borda visual do conteúdo. */}
+      <ul className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 scroll-px-4 [scrollbar-width:thin]">
         {fileira.items.map((item) => (
           <CourseCard key={item.id} item={item} className={LARGURA} />
         ))}

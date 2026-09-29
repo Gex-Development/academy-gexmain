@@ -21,9 +21,12 @@ export function FileiraEmBreve({ fileiras }: { fileiras: Fileira[] }) {
       <h2 id="fileira-em-breve" className="mb-3 text-lg font-semibold tracking-tight text-texto">
         Em breve
       </h2>
-      {/* -mx/px: mesmo truque de fileira-area.tsx, a rolagem vai até a borda
-          da tela no celular sem a página ganhar rolagem horizontal. */}
-      <ul className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
+      {/* -mx/px e scroll-px-4: mesmo truque de fileira-area.tsx (ver o
+          comentário lá) — a rolagem vai até a borda da tela no celular sem
+          rolagem horizontal na página, e scroll-px-4 evita o 1º ladrilho
+          nascer 16px fora do lugar quando a fileira já rola (scroll-snap
+          ignora o padding do <ul>, rodada de correção 2). */}
+      <ul className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 scroll-px-4 [scrollbar-width:thin]">
         {fileiras.map((fileira) => (
           <li key={fileira.key} className={LARGURA}>
             <Link
