@@ -11,7 +11,12 @@ export function AppShell({ user, children }: { user: CurrentUser; children: Reac
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-borda bg-superficie">
+      {/*
+        Fixa no topo e translúcida: o conteúdo passa por baixo desfocado.
+        bg-fundo/75, não bg-vidro: o vidro (4,5% de branco) seria
+        transparente demais para ler o menu sobre uma capa rolando por baixo.
+      */}
+      <header className="sticky top-0 z-30 border-b border-vidro-borda bg-fundo/75 backdrop-blur-md">
         {/*
           Três colunas com os lados de mesmo peso (1fr / auto / 1fr): é o que
           deixa o menu CENTRADO na barra, e não apenas "depois da logo". Com

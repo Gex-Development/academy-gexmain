@@ -13,7 +13,7 @@ export function ProgressBar({ completed, total }: { completed: number; total: nu
         aria-label={`${percent}% concluído`}
         className="h-1.5 w-full overflow-hidden rounded-full bg-borda"
       >
-        <div className="h-full bg-marca-500" style={{ width: `${percent}%` }} />
+        <div className="h-full bg-gradient-to-r from-azul to-ciano" style={{ width: `${percent}%` }} />
       </div>
       <p className="mt-1 text-xs text-texto-suave">
         {completed} de {total} {total === 1 ? 'aula concluída' : 'aulas concluídas'} · {percent}%

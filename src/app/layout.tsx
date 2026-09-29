@@ -1,7 +1,14 @@
+import { Geist } from 'next/font/google'
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { CHAVE_TEMA } from '@/lib/tema/tema'
 import './globals.css'
+
+// Geist hospedada pelo próprio Next (sem requisição ao Google no navegador).
+// `variable`, não `className`: a fonte vira a variável --font-geist, que o
+// --font-sans de globals.css consome. Aplicada no <body>, NUNCA no <html> —
+// ver o comentário sobre o remonte do Strict Mode mais abaixo.
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
 
 export const metadata: Metadata = {
   title: 'GEX Academy',
@@ -39,7 +46,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_TEMA }} />
       </head>
-      <body>{children}</body>
+      <body className={geist.variable}>{children}</body>
     </html>
   )
 }

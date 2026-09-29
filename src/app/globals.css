@@ -41,10 +41,10 @@
   --color-azul: #004eac;
 
   --color-superficie: #ffffff;
-  --color-fundo: #f5f6f8;
-  --color-borda: #e2e5ea;
+  --color-fundo: #f3f6fb;
+  --color-borda: #dbe6f5;
   --color-texto: #221f20;
-  --color-texto-suave: #5f5b5d;
+  --color-texto-suave: #55627a;
 
   /* Cor da AÇÃO e o texto que vai em cima dela. Invertem entre os temas. */
   --color-acao: #004eac;
@@ -59,8 +59,26 @@
      junto, em vez de escurecer --color-perigo no escuro e arriscar quebrar
      esse outro uso. Ver :root.dark abaixo. */
   --color-perigo-texto: #ffffff;
-  --color-sucesso: #1f8a4c;
+  /* Era #1f8a4c: 4,38:1 sobre branco, abaixo do mínimo — defeito anterior a
+     este redesenho, achado quando o teste de tokens passou a medir o par. */
+  --color-sucesso: #17753f;
   --color-aviso: #a86b00;
+
+  /* Pele "Vidro GEX" (spec 2026-09-29, seção 4). No claro não há vidro de
+     verdade: as superfícies são sólidas, e só o escuro ganha transparência
+     e brilho — vidro sobre fundo claro some. */
+  --color-vidro: #ffffff;
+  --color-vidro-borda: #dbe6f5;
+  /* Item selecionado (pílula de filtro, aula atual, aba ativa): contorno em
+     vez de preenchimento sólido — o detalhe que o dono do produto apontou na
+     direção escolhida. No claro é azul; ciano sobre branco é ilegível. */
+  --color-selecionado: #e8f0fa;
+  --color-selecionado-borda: #7fa6d9;
+  --color-selecionado-texto: #004eac;
+
+  --shadow-destaque: 0 12px 32px -16px rgb(15 40 80 / 0.18);
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
 
   /* Fundo atrás de capa de curso e de área. Deliberadamente IGUAL nos dois
      temas — não redefina em :root.dark. Sobre ele vai texto branco, e a
@@ -82,11 +100,11 @@
   --color-marca-600: #01cdff;
   --color-marca-700: #7fe3ff;
 
-  --color-superficie: #221f20;
-  --color-fundo: #131213;
-  --color-borda: #353133;
-  --color-texto: #f4f3f4;
-  --color-texto-suave: #a09da0;
+  --color-superficie: #0d1a30;
+  --color-fundo: #070f1f;
+  --color-borda: #1c2c47;
+  --color-texto: #eef3fb;
+  --color-texto-suave: #9fb0cc;
 
   --color-acao: #01cdff;
   --color-acao-texto: #221f20;
@@ -97,12 +115,49 @@
   --color-perigo-texto: #221f20;
   --color-sucesso: #4ecf8b;
   --color-aviso: #e0a355;
+
+  --color-vidro: rgb(255 255 255 / 0.045);
+  --color-vidro-borda: rgb(120 170 255 / 0.16);
+  --color-selecionado: rgb(1 205 255 / 0.16);
+  --color-selecionado-borda: rgb(1 205 255 / 0.5);
+  --color-selecionado-texto: #d8f6ff;
+
+  --shadow-destaque: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 20px 40px -20px rgb(1 205 255 / 0.25);
 }
 
 html { color-scheme: light; }
 :root.dark { color-scheme: dark; }
 
+/* Fundo e trama da página. Não são cores (um é degradê, outro é padrão de
+   imagem), então vivem fora do @theme — mas seguem a mesma regra: o claro é
+   a base, o escuro redefine. */
+:root {
+  --fundo-pagina: var(--color-fundo);
+  --trama: none;
+}
+:root.dark {
+  --fundo-pagina: radial-gradient(120% 70% at 15% -10%, #0e2a55 0%, #081429 45%, #050a16 100%);
+  --trama: radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+}
+
 body {
+  min-height: 100dvh;
+  background: var(--fundo-pagina) fixed;
   background-color: var(--color-fundo);
   color: var(--color-texto);
+  /* No body, não no html: é o body que recebe a classe do next/font
+     (layout.tsx), então é só daqui para dentro que --font-geist existe. */
+  font-family: var(--font-sans);
+}
+
+/* A trama de pontos. z-index -1 a põe atrás de todo o conteúdo e na frente
+   do fundo; pointer-events none para nunca interceptar clique. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--trama);
+  background-size: 18px 18px;
+  pointer-events: none;
 }

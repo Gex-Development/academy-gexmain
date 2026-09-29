@@ -88,8 +88,8 @@ De cima para baixo:
 1. **Saudação** — "Olá, William", grande.
 2. **Filtros em pílula** — Tudo / Continuar / Não iniciados / Concluídos (seção 9.2). O ativo usa o token `selecionado`.
 3. **Destaque** — card de vidro com a capa do curso, rótulo "Continue de onde parou", título do curso, "Aula N de M", barra de progresso e botão **Continuar**, que leva direto à aula. A escolha de o que destacar continua em `escolherDestaque`:
-   - com aula a retomar → esse curso;
-   - sem retomada, com trilha inicial → a trilha, com botão **Começar**;
+   - trilha inicial com acesso e ainda não concluída → a trilha, com botão **Começar** (ou **Continuar**, se já começou);
+   - sem trilha pendente, com aula a retomar → esse curso, botão **Continuar**;
    - sem nenhum dos dois → o destaque não aparece.
 4. **Uma fileira por área**, na ordem de `position` e nome:
    - título da fileira = nome da área, com **Ver tudo →** para `/area/[slug]`;
