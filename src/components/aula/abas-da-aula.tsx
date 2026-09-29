@@ -68,7 +68,12 @@ export function AbasDaAula({
           id={`${base}-painel-${aba.id}`}
           aria-labelledby={`${base}-aba-${aba.id}`}
           hidden={aba.id !== ativa}
-          className="pt-5"
+          // tabIndex 0: padrão WAI-ARIA de tabs quando o painel pode não ter
+          // nenhum elemento focável dentro (a aba "Sobre" é só texto) — sem
+          // isso, quem navega por teclado não consegue Tab da tablist para
+          // dentro do painel.
+          tabIndex={0}
+          className="rounded-lg pt-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
         >
           {aba.conteudo}
         </div>

@@ -42,4 +42,12 @@ describe('AbasDaAula', () => {
     expect(screen.getByRole('tab', { name: 'Sobre' })).toHaveAttribute('tabindex', '0')
     expect(screen.getByRole('tab', { name: 'Materiais · 2' })).toHaveAttribute('tabindex', '-1')
   })
+
+  // Revisão final, Minor 6: padrão WAI-ARIA de tabs — o painel também
+  // precisa ser alcançável pelo Tab quando o conteúdo dele (a aba "Sobre",
+  // texto puro) não tem nenhum elemento focável.
+  it('o painel visível tem tabIndex 0, para o Tab entrar nele a partir da tablist', () => {
+    render(<AbasDaAula abas={abas} inicial="sobre" />)
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('tabindex', '0')
+  })
 })

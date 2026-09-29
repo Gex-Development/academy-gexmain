@@ -41,11 +41,13 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
 
   const { nome, capaUrl: capaDaArea, cor: corDaArea, itens } = area
 
-  // Terceiro degrau da reserva de capa — mesmo raciocínio de area-card.tsx:
-  // sem imagem e sem cor, bg-capa-fundo sozinho (#221f20 sobre #131213 no
-  // escuro) dá 1,14:1, quase invisível. from-azul/to-ciano são tokens fixos
-  // (não invertem por tema), então o gradiente fica igual nos dois temas,
-  // do mesmo jeito que capa-fundo.
+  // Terceiro degrau da reserva de capa — mesma cadeia de locked-course.tsx
+  // (mesmo raciocínio, aplicado ao banner da área — ver o comentário lá):
+  // sem imagem e sem cor, bg-capa-fundo sozinho (#221f20, fixo nos dois
+  // temas) fica escuro demais para se destacar do fundo escuro da própria
+  // página. from-azul/to-ciano são tokens fixos (não invertem por tema),
+  // então o gradiente fica igual nos dois temas, do mesmo jeito que
+  // capa-fundo.
   const semReserva = !capaDaArea && !corDaArea
 
   return (

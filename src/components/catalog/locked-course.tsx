@@ -10,13 +10,14 @@ export function LockedCourse({
   course: CourseView
   requestStatus: 'none' | 'pending'
 }) {
-  // Mesma cadeia de três degraus de area-card.tsx (item 3 da revisão de
-  // branch) — aqui o buraco era pior que em course-card.tsx: o cartão que
-  // envolve a capa usa bg-superficie, que no escuro é #221f20, o MESMO
-  // valor de --color-capa-fundo. Sem o terceiro degrau, a área da capa
-  // ficava 1,00:1 contra o próprio contêiner — literalmente a mesma cor,
-  // distinguível só pela borda de 1px. from-azul/to-ciano quebra esse
-  // empate porque nenhum dos dois é igual a bg-superficie em tema nenhum.
+  // Mesma cadeia de três degraus de area/[slug]/page.tsx (mesmo raciocínio,
+  // aplicado ao cartão de curso bloqueado — ver o comentário lá): o
+  // contêiner que envolve a capa é bg-vidro, quase transparente no escuro.
+  // Sem este terceiro degrau, a área da capa (bg-capa-fundo sozinho, fixo
+  // nos dois temas) ficaria escura demais para se destacar como bloco
+  // dentro dele, distinguível só pela borda de 1px. from-azul/to-ciano
+  // quebra isso porque nenhum dos dois se aproxima do tom de bg-vidro em
+  // tema nenhum.
   const capa = capaComReserva({ coverUrl: course.coverUrl, areaCoverUrl: course.areaCoverUrl })
   const semReserva = !capa && !course.areaColor
 
@@ -46,16 +47,16 @@ export function LockedCourse({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={capa} alt="" className="h-full w-full object-cover" />
           )}
-      </div>
+        </div>
 
-      <span aria-hidden className="mt-4 block text-3xl">
-        🔒
-      </span>
-      <h1 className="mt-3 text-lg font-semibold">{course.title}</h1>
-      <p className="mt-1 text-xs text-texto-suave">{course.areaName ?? 'Trilha inicial'}</p>
-      {course.description && <p className="mt-4 text-sm text-texto-suave">{course.description}</p>}
-      <p className="mt-6 text-sm text-texto-suave">Você ainda não tem acesso a este curso.</p>
-      <RequestAccessForm courseSlug={course.slug} jaSolicitado={requestStatus === 'pending'} />
+        <span aria-hidden className="mt-4 block text-3xl">
+          🔒
+        </span>
+        <h1 className="mt-3 text-lg font-semibold">{course.title}</h1>
+        <p className="mt-1 text-xs text-texto-suave">{course.areaName ?? 'Trilha inicial'}</p>
+        {course.description && <p className="mt-4 text-sm text-texto-suave">{course.description}</p>}
+        <p className="mt-6 text-sm text-texto-suave">Você ainda não tem acesso a este curso.</p>
+        <RequestAccessForm courseSlug={course.slug} jaSolicitado={requestStatus === 'pending'} />
       </div>
     </div>
   )

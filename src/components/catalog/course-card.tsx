@@ -20,26 +20,33 @@ export function CourseCard({ item, className }: { item: CatalogItem; className?:
         href={`/curso/${item.slug}`}
         className="group block rounded-card focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
       >
-        {/* Reserva final de capa (from-azul to-ciano): tokens fixos, iguais
-            nos dois temas — sobre eles só vai o cadeado, nunca texto. */}
-        <div
-          className={cn(
-            'relative aspect-[16/10] overflow-hidden rounded-card border border-vidro-borda',
-            capa ? 'bg-capa-fundo' : 'bg-gradient-to-br from-azul to-ciano',
-          )}
-        >
-          {capa && (
-            // Capa é URL externa; next/image exigiria allowlist de domínio.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={capa}
-              alt=""
-              className={cn(
-                'h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none',
-                bloqueado && 'opacity-45 grayscale',
-              )}
-            />
-          )}
+        <div className="relative aspect-[16/10] overflow-hidden rounded-card border border-vidro-borda">
+          {/* Reserva final de capa (from-azul to-ciano): tokens fixos, iguais
+              nos dois temas — sobre eles só vai o cadeado, nunca texto.
+              opacity-45/grayscale ficam neste contêiner da CAPA (imagem ou
+              degradê), não só na <img> (revisão final, Minor 4): um curso
+              bloqueado sem capa própria nem de área caía no degradê de
+              reserva sem esmaecer — só a imagem carregava a classe, e sem
+              <img> nenhuma o card bloqueado ficava idêntico a um aberto. O
+              selo de cadeado fica FORA deste contêiner, para não esmaecer
+              junto — ele é o aviso, não a capa. */}
+          <div
+            className={cn(
+              'absolute inset-0',
+              capa ? 'bg-capa-fundo' : 'bg-gradient-to-br from-azul to-ciano',
+              bloqueado && 'opacity-45 grayscale',
+            )}
+          >
+            {capa && (
+              // Capa é URL externa; next/image exigiria allowlist de domínio.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={capa}
+                alt=""
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transition-none"
+              />
+            )}
+          </div>
           {bloqueado && (
             <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
               <span aria-hidden>🔒</span>
