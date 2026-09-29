@@ -41,7 +41,7 @@ export default async function AulaPage({
   ])
   const estados = estadoDasAulas(course.lessons, concluidas)
   const concluidasNoCurso = course.lessons.filter((l) => concluidas.has(l.id)).length
-  const duracao = course.lessons[indice]?.durationSeconds ?? null
+  const duracao = lesson.durationSeconds
 
   const sobre = lesson.description ? (
     // Texto puro: whitespace-pre-line preserva as quebras sem interpretar marcação.
@@ -85,7 +85,15 @@ export default async function AulaPage({
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <CompleteButton lessonId={lesson.id} courseSlug={course.slug} completed={concluidas.has(lesson.id)} />
+              <CompleteButton
+                lessonId={lesson.id}
+                courseSlug={course.slug}
+                completed={concluidas.has(lesson.id)}
+                // Sem "Próxima ›" (última aula do curso), concluir é a única
+                // ação possível aqui — vira o botão sólido. Com "Próxima ›"
+                // ao lado, ela é a principal, e concluir fica secundário.
+                destaque={!proxima}
+              />
               {proxima && (
                 <Link
                   href={`/curso/${course.slug}/aula/${proxima}`}
