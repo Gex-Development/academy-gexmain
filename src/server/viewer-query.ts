@@ -31,7 +31,8 @@ export type CourseView = {
   areaCoverUrl: string | null
   isOnboarding: boolean
   access: AccessLevel
-  lessons: { id: string; slug: string; title: string; durationSeconds: number | null }[]
+  /** coverUrl é a capa da própria aula; nula, a lista usa a do curso. */
+  lessons: { id: string; slug: string; title: string; coverUrl: string | null; durationSeconds: number | null }[]
 }
 
 export type LessonDetail = {
@@ -53,7 +54,7 @@ export type LessonView = {
 }
 
 export const SELECT_CURSO_VIEW =
-  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name, slug, color, cover_url), lessons(id, slug, title, duration_seconds, status, position)'
+  'id, slug, title, description, cover_url, status, is_onboarding, area_id, areas(name, slug, color, cover_url), lessons(id, slug, title, cover_url, duration_seconds, status, position)'
 
 export type LinhaCursoView = {
   id: string
@@ -69,6 +70,7 @@ export type LinhaCursoView = {
     id: string
     slug: string
     title: string
+    cover_url: string | null
     duration_seconds: number | null
     status: string
     position: number
@@ -117,7 +119,13 @@ export function paraCourseView(
       : [...row.lessons]
           .filter((l) => l.status === 'published' || access === 'manage')
           .sort((a, b) => a.position - b.position)
-          .map((l) => ({ id: l.id, slug: l.slug, title: l.title, durationSeconds: l.duration_seconds }))
+          .map((l) => ({
+            id: l.id,
+            slug: l.slug,
+            title: l.title,
+            coverUrl: l.cover_url,
+            durationSeconds: l.duration_seconds,
+          }))
 
   return {
     id: row.id,

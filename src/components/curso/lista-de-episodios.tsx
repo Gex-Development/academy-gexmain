@@ -41,6 +41,9 @@ export function ListaDeEpisodios({
       {aulas.map((aula, i) => {
         const estado = estados[i]!
         const atual = aulaAtualId ? aula.id === aulaAtualId : estado === 'assistindo'
+        // A capa da própria aula; sem ela, a do curso (que já vem com a
+        // reserva da área aplicada por quem chama — capaComReserva).
+        const miniatura = aula.coverUrl ?? capaUrl
         return (
           <li key={aula.id}>
             <Link
@@ -65,12 +68,12 @@ export function ListaDeEpisodios({
                 <div
                   className={cn(
                     'hidden aspect-video w-24 shrink-0 overflow-hidden rounded-md sm:block',
-                    capaUrl ? 'bg-capa-fundo' : 'bg-gradient-to-br from-azul to-ciano',
+                    miniatura ? 'bg-capa-fundo' : 'bg-gradient-to-br from-azul to-ciano',
                   )}
                 >
-                  {capaUrl && (
+                  {miniatura && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={capaUrl} alt="" className="h-full w-full object-cover" />
+                    <img src={miniatura} alt="" className="h-full w-full object-cover" />
                   )}
                 </div>
               )}

@@ -388,6 +388,7 @@ export type Database = {
           title: string
           slug: string
           description: string | null
+          cover_url: string | null
           video_provider: string
           video_ref: string
           duration_seconds: number | null
@@ -402,6 +403,7 @@ export type Database = {
           title: string
           slug: string
           description?: string | null
+          cover_url?: string | null
           video_provider: string
           video_ref: string
           duration_seconds?: number | null
@@ -416,6 +418,7 @@ export type Database = {
           title?: string
           slug?: string
           description?: string | null
+          cover_url?: string | null
           video_provider?: string
           video_ref?: string
           duration_seconds?: number | null

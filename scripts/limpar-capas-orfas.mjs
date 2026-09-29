@@ -2,7 +2,7 @@
 /**
  * Lista (e opcionalmente apaga) as capas órfãs do bucket `capas`.
  *
- * Órfã é o arquivo que NENHUMA área e NENHUM curso referencia. Acontece
+ * Órfã é o arquivo que NENHUMA área, NENHUM curso e NENHUMA aula referencia. Acontece
  * quando alguém escolhe a imagem e abandona o formulário: o upload já subiu
  * para o Storage, mas a entidade nunca foi salva apontando para ele. Não é
  * defeito — é o preço, aceito de propósito, de o upload acontecer antes da
@@ -64,17 +64,23 @@ async function listarTudo(prefixo = '') {
   return encontrados
 }
 
-const [{ data: areas, error: erroAreas }, { data: cursos, error: erroCursos }] = await Promise.all([
+const [
+  { data: areas, error: erroAreas },
+  { data: cursos, error: erroCursos },
+  { data: aulas, error: erroAulas },
+] = await Promise.all([
   db.from('areas').select('name, cover_url'),
   db.from('courses').select('title, cover_url'),
+  db.from('lessons').select('title, cover_url'),
 ])
 // Erro aqui não pode virar lista vazia: lista vazia faria TODA capa parecer
 // órfã, e com --apagar isso limparia o bucket inteiro.
 if (erroAreas) throw erroAreas
 if (erroCursos) throw erroCursos
+if (erroAulas) throw erroAulas
 
 const referenciadas = new Set(
-  [...areas, ...cursos].map((linha) => linha.cover_url).filter(Boolean),
+  [...areas, ...cursos, ...aulas].map((linha) => linha.cover_url).filter(Boolean),
 )
 
 const arquivos = await listarTudo()

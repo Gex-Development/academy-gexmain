@@ -14,9 +14,9 @@ function linha(over: Partial<LinhaCursoView> = {}): LinhaCursoView {
     area_id: 'area-trafego',
     areas: { name: 'Tráfego', slug: 'trafego', color: '#2f6bff', cover_url: 'https://exemplo.test/area.png' },
     lessons: [
-      { id: 'l1', slug: 'aula-1', title: 'Aula 1', duration_seconds: 300, status: 'published', position: 0 },
-      { id: 'l2', slug: 'aula-2', title: 'Aula 2', duration_seconds: 600, status: 'published', position: 1 },
-      { id: 'l3', slug: 'aula-3', title: 'Aula 3 (rascunho)', duration_seconds: null, status: 'draft', position: 2 },
+      { id: 'l1', slug: 'aula-1', title: 'Aula 1', cover_url: 'https://exemplo.test/aula-1.png', duration_seconds: 300, status: 'published', position: 0 },
+      { id: 'l2', slug: 'aula-2', title: 'Aula 2', cover_url: null, duration_seconds: 600, status: 'published', position: 1 },
+      { id: 'l3', slug: 'aula-3', title: 'Aula 3 (rascunho)', cover_url: null, duration_seconds: null, status: 'draft', position: 2 },
     ],
     ...over,
   }
@@ -96,12 +96,17 @@ describe('paraCourseView — a propriedade que a tarefa existe para garantir', (
   it('ordena as aulas por position, não pela ordem de chegada da linha', () => {
     const fora_de_ordem = linha({
       lessons: [
-        { id: 'l2', slug: 'aula-2', title: 'Aula 2', duration_seconds: 600, status: 'published', position: 1 },
-        { id: 'l1', slug: 'aula-1', title: 'Aula 1', duration_seconds: 300, status: 'published', position: 0 },
+        { id: 'l2', slug: 'aula-2', title: 'Aula 2', cover_url: null, duration_seconds: 600, status: 'published', position: 1 },
+        { id: 'l1', slug: 'aula-1', title: 'Aula 1', cover_url: 'https://exemplo.test/aula-1.png', duration_seconds: 300, status: 'published', position: 0 },
       ],
     })
     const view = paraCourseView(fora_de_ordem, colega, new Set())
     expect(view!.lessons.map((l) => l.slug)).toEqual(['aula-1', 'aula-2'])
+  })
+
+  it('carrega a capa de cada aula, nula quando a aula não tem', () => {
+    const view = paraCourseView(linha(), colega, new Set())
+    expect(view!.lessons.map((l) => l.coverUrl)).toEqual(['https://exemplo.test/aula-1.png', null])
   })
 
   it('trilha inicial (sem área): area_id e areas nulos viram areaName e areaColor null', () => {
@@ -122,7 +127,7 @@ describe('paraCourseView — a propriedade que a tarefa existe para garantir', (
       ['access', 'areaColor', 'areaCoverUrl', 'areaName',
       'areaSlug', 'coverUrl', 'description', 'id', 'isOnboarding', 'lessons', 'slug', 'title'].sort(),
     )
-    expect(Object.keys(view!.lessons[0]!).sort()).toEqual(['durationSeconds', 'id', 'slug', 'title'].sort())
+    expect(Object.keys(view!.lessons[0]!).sort()).toEqual(['coverUrl', 'durationSeconds', 'id', 'slug', 'title'].sort())
   })
 })
 
