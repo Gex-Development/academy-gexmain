@@ -52,8 +52,6 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
     <div className="flex flex-col gap-8">
       <Voltar href="/">Início</Voltar>
 
-      {/* Mesmo overlay e mesma medição de contraste de antes (ver o comentário
-          original sobre o degrau 3 da reserva de capa). */}
       <section
         className={`relative overflow-hidden rounded-2xl border border-vidro-borda ${
           semReserva ? 'bg-gradient-to-br from-azul to-ciano' : 'bg-capa-fundo'
@@ -64,8 +62,19 @@ export default async function AreaPage({ params }: { params: Promise<{ slug: str
           // eslint-disable-next-line @next/next/no-img-element
           <img src={capaDaArea} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
-        {/* Mesmo overlay e mesma medição de contraste de antes (ver o
-            comentário original, preservado acima desta seção). */}
+        {/*
+          Gradiente que garante leitura do texto sobre qualquer imagem —
+          mesma função e mesmo raciocínio do overlay em area-card.tsx (ver
+          o comentário lá), com os stops próprios desta faixa (88%/50%/20%,
+          não 85%/25%/transparente). Também é a garantia de contraste do
+          degrau 3 da reserva acima (from-azul to-ciano): pior ponto medido
+          em toda a altura é 9,51:1 (a ~72% de distância do fundo) — nunca
+          abaixo de 4,5:1, mesmo no topo, onde este overlay não some de
+          todo (fica em 20%, não transparente): base azul crua já passa
+          sozinha (7,82:1). Se este overlay virar condicional a
+          areaCoverUrl algum dia, o degrau 3 volta a ficar exposto sem
+          nenhum teste avisando — conferir de novo antes.
+        */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/88 via-black/50 to-black/20" />
         <div className="relative flex min-h-48 flex-col justify-end p-6 sm:min-h-56 sm:p-8">
           <h1 className="text-3xl font-semibold tracking-tight text-white">{nome}</h1>
