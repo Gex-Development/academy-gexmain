@@ -91,7 +91,7 @@ const orfas = arquivos.filter(
 const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(2)} MB`
 
 console.log(`\nArquivos no bucket "${BUCKET}": ${arquivos.length}`)
-console.log(`Referenciados por área ou curso: ${arquivos.length - orfas.length}`)
+console.log(`Referenciados por área, curso ou aula: ${arquivos.length - orfas.length}`)
 console.log(`Órfãos: ${orfas.length}\n`)
 
 if (orfas.length > 0) {
