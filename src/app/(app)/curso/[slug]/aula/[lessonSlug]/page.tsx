@@ -116,19 +116,19 @@ export default async function AulaPage({
           </div>
         </div>
 
-        <aside className="self-start overflow-hidden rounded-2xl border border-vidro-borda bg-vidro backdrop-blur-md lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+        <aside className="self-start overflow-hidden rounded-2xl border border-vidro-borda bg-vidro backdrop-blur-md lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:flex lg:max-h-[calc(100dvh-7rem)] lg:flex-col">
           <div className="border-b border-vidro-borda px-4 py-3">
             <p className="text-sm font-semibold text-texto">Aulas do curso</p>
             <div className="mt-2">
               <ProgressBar completed={concluidasNoCurso} total={course.lessons.length} />
             </div>
           </div>
-          {/* Revisão final, Minor 1: sem limite de altura, um curso longo ao
-              lado de uma aba Dúvidas com muitas perguntas deixava o fim da
-              lista alcançável só depois de rolar o fórum inteiro. O
-              cabeçalho (progresso) acima fica fixo; só a lista rola dentro
-              de si mesma. */}
-          <div className="lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
+          {/* Sem limite de altura, um curso longo ao lado de uma aba Dúvidas
+              com muitas perguntas deixava o fim da lista alcançável só
+              depois de rolar o fórum inteiro. O limite fica no aside inteiro
+              (top-24 = 6rem + 1rem de folga), então o cabeçalho de progresso
+              entra na conta; ele fica fixo e só a lista rola. */}
+          <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             <ListaDeEpisodios
               courseSlug={course.slug}
               aulas={course.lessons}
