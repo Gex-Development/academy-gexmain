@@ -47,7 +47,10 @@ export function ListaDeEpisodios({
               href={`/curso/${courseSlug}/aula/${aula.slug}`}
               aria-current={atual ? 'true' : undefined}
               className={cn(
-                'flex items-center gap-3 transition-colors hover:bg-vidro',
+                // hover:bg-vidro-hover, não hover:bg-vidro (revisão final,
+                // Minor 3): o contêiner já é bg-vidro, que no claro é opaco
+                // e igual ao próprio fundo — hover:bg-vidro não mudava nada.
+                'flex items-center gap-3 transition-colors hover:bg-vidro-hover',
                 compacta ? 'px-4 py-2.5' : 'px-4 py-3',
                 // --color-ciano é fixo (mesmo hex nos dois temas) — 1,63:1 contra
                 // o fundo claro de bg-selecionado no tema claro, ilegível. --color-acao

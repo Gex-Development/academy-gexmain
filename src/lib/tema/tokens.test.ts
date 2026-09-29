@@ -40,6 +40,11 @@ function pares(t: Record<string, string>, base: string): Par[] {
     // O selo "Concluída" e as mensagens de sucesso. No claro, o #1f8a4c de
     // antes dava 4,38:1 sobre branco — abaixo do mínimo, e já em uso.
     ['sucesso sobre superfície', t['sucesso'], t['superficie']],
+    // Revisão final, Minor 7: o número da aula e a duração, na linha "atual"
+    // (destacada) da lista de episódios (lista-de-episodios.tsx), são
+    // texto-suave sobre bg-selecionado — par diferente de
+    // selecionado-texto (que só veste o selo/pílula), não coberto até aqui.
+    ['texto-suave sobre selecionado', t['texto-suave'], comporSobre(t['selecionado'], base)],
   ]
 }
 
@@ -50,5 +55,26 @@ describe.each([
   it.each(pares(t, base))('%s', (_rotulo, texto, fundo) => {
     expect(texto, 'token ausente').toBeDefined()
     expect(razaoDeContraste(texto, fundo)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+// Revisão final, Minor 7: pares NÃO textuais (bordas, indicadores de estado)
+// só precisam de 3:1 (WCAG 1.4.11), não 4,5:1 — selecionado-borda é o
+// contorno de "item selecionado" (pílula de filtro, aula atual, aba ativa)
+// contra a superfície de vidro por trás dele. Composto sobre `base` dos dois
+// lados, como o resto do arquivo já faz para token translúcido.
+type ParNaoTexto = [rotulo: string, frente: string, fundo: string]
+
+function paresNaoTexto(t: Record<string, string>): ParNaoTexto[] {
+  return [['selecionado-borda sobre vidro', t['selecionado-borda'], t['vidro']]]
+}
+
+describe.each([
+  ['claro', claro, claro['fundo']],
+  ['escuro', escuro, PIOR_FUNDO_ESCURO],
+])('tokens não-textuais do tema %s passam 3:1 (WCAG 1.4.11)', (_nome, t, base) => {
+  it.each(paresNaoTexto(t))('%s', (_rotulo, frente, fundo) => {
+    expect(frente, 'token ausente').toBeDefined()
+    expect(razaoDeContraste(comporSobre(frente, base), comporSobre(fundo, base))).toBeGreaterThanOrEqual(3)
   })
 })

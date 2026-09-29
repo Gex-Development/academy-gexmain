@@ -69,11 +69,19 @@
      e brilho — vidro sobre fundo claro some. */
   --color-vidro: #ffffff;
   --color-vidro-borda: #dbe6f5;
+  /* Hover de linha sobre vidro (revisão final, Minor 3): no claro --color-vidro
+     é opaco e igual ao fundo do próprio contêiner (branco), então
+     `hover:bg-vidro` não mudava nada visualmente na fileira de episódios.
+     Token dedicado, visivelmente diferente de vidro nos dois temas. */
+  --color-vidro-hover: #eef3fb;
   /* Item selecionado (pílula de filtro, aula atual, aba ativa): contorno em
      vez de preenchimento sólido — o detalhe que o dono do produto apontou na
      direção escolhida. No claro é azul; ciano sobre branco é ilegível. */
   --color-selecionado: #e8f0fa;
-  --color-selecionado-borda: #7fa6d9;
+  /* Era #7fa6d9: 2,51:1 contra vidro (branco) — abaixo do mínimo de 3:1 para
+     indicador de estado não-textual (WCAG 1.4.11), achado quando o teste de
+     tokens passou a medir o par (revisão final, Minor 7). */
+  --color-selecionado-borda: #5f8ccc;
   --color-selecionado-texto: #004eac;
 
   --shadow-destaque: 0 12px 32px -16px rgb(15 40 80 / 0.18);
@@ -118,8 +126,12 @@
 
   --color-vidro: rgb(255 255 255 / 0.045);
   --color-vidro-borda: rgb(120 170 255 / 0.16);
+  --color-vidro-hover: rgb(255 255 255 / 0.09);
   --color-selecionado: rgb(1 205 255 / 0.16);
-  --color-selecionado-borda: rgb(1 205 255 / 0.5);
+  /* Era 0.5 de alfa: 2,65:1 contra vidro composto sobre o pior fundo escuro —
+     também abaixo de 3:1 (revisão final, Minor 7, mesmo teste que achou o
+     par no claro). 0.6 é o mínimo ajuste que fecha 3:1 com folga. */
+  --color-selecionado-borda: rgb(1 205 255 / 0.6);
   --color-selecionado-texto: #d8f6ff;
 
   --shadow-destaque: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 20px 40px -20px rgb(1 205 255 / 0.25);
