@@ -12,7 +12,8 @@ const SELO: Record<EstadoDaAula, { texto: string; classe: string }> = {
 
 /**
  * Aulas do curso como lista de episódios (spec, seção 7). A versão
- * `compacta` (sem miniatura nem selo) é a lista lateral da sala de aula.
+ * `compacta` (sem miniatura, sem o selo em pílula — só um ✓ para aula
+ * concluída) é a lista lateral da sala de aula.
  * O destaque é da `aulaAtualId` quando informada (sala de aula: a aula aberta);
  * senão, da aula no estado "assistindo" (página do curso: a próxima).
  */
@@ -48,7 +49,12 @@ export function ListaDeEpisodios({
               className={cn(
                 'flex items-center gap-3 transition-colors hover:bg-vidro',
                 compacta ? 'px-4 py-2.5' : 'px-4 py-3',
-                atual && 'bg-selecionado shadow-[inset_2px_0_0_var(--color-ciano)]',
+                // --color-ciano é fixo (mesmo hex nos dois temas) — 1,63:1 contra
+                // o fundo claro de bg-selecionado no tema claro, ilegível. --color-acao
+                // inverte por tema (ciano no escuro, azul da marca no claro), então
+                // o filete continua ciano no escuro (como o spec pede) e vira azul
+                // no claro, onde tem contraste de verdade.
+                atual && 'bg-selecionado shadow-[inset_2px_0_0_var(--color-acao)]',
               )}
             >
               <span className="w-6 shrink-0 text-sm tabular-nums text-texto-suave">{i + 1}</span>
