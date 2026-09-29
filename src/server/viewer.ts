@@ -52,8 +52,8 @@ export async function getCourseView(slug: string): Promise<CourseView | null> {
 }
 
 /**
- * Carrega uma aula para o aluno, com o curso (já autorizado) e a navegação
- * anterior/próxima.
+ * Carrega uma aula para o aluno, com o curso (já autorizado) e a posição
+ * dela na lista (índice e a próxima, para o link "Próxima ›").
  *
  * Reusa getCourseView() para decidir o acesso: se o curso está bloqueado, ou
  * se o slug pedido não está na lista de aulas que o aluno pode ver (aula em
@@ -83,7 +83,6 @@ export async function getLessonView(
   return {
     course,
     lesson: paraLessonDetail(data as unknown as LinhaAulaView),
-    anterior: navegacao.anterior,
     proxima: navegacao.proxima,
     indice: navegacao.indice,
   }

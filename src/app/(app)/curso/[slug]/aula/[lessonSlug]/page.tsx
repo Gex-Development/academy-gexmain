@@ -70,8 +70,18 @@ export default async function AulaPage({
     <div className="flex flex-col gap-4">
       <Voltar href={`/curso/${course.slug}`}>{course.title}</Voltar>
 
+      {/*
+        Revisão final, Minor 2: em tela estreita este grid não tem colunas
+        (só o `lg:grid-cols-...` abaixo cria a segunda), então os itens
+        empilham na ordem do JSX — por isso o <aside> da lista nasce logo
+        depois do bloco vídeo/título/botões e antes das abas, em vez de
+        depois delas. Em telas largas, os `lg:col-start`/`lg:row-start`/
+        `lg:row-span` movem o <aside> para a coluna da direita, alinhado com
+        as duas linhas da coluna esquerda (vídeo+título na 1ª, abas na 2ª) —
+        o mesmo layout de antes desta correção.
+      */}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="min-w-0">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
           <div className="overflow-hidden rounded-2xl border border-vidro-borda">
             <VideoPlayer provider={lesson.provider} videoRef={lesson.ref} title={lesson.title} />
           </div>
@@ -104,39 +114,46 @@ export default async function AulaPage({
               )}
             </div>
           </div>
-
-          <div className="mt-6">
-            <AbasDaAula
-              inicial={abaInicial}
-              abas={[
-                { id: 'sobre', rotulo: 'Sobre', conteudo: sobre },
-                { id: 'materiais', rotulo: `Materiais · ${attachments.length}`, conteudo: materiais },
-                {
-                  id: 'duvidas',
-                  rotulo: `Dúvidas · ${questions.length}`,
-                  conteudo: <ForumSection lessonId={lesson.id} questions={questions} />,
-                },
-              ]}
-            />
-          </div>
         </div>
 
-        <aside className="self-start overflow-hidden rounded-2xl border border-vidro-borda bg-vidro backdrop-blur-md lg:sticky lg:top-24">
+        <aside className="self-start overflow-hidden rounded-2xl border border-vidro-borda bg-vidro backdrop-blur-md lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-2">
           <div className="border-b border-vidro-borda px-4 py-3">
             <p className="text-sm font-semibold text-texto">Aulas do curso</p>
             <div className="mt-2">
               <ProgressBar completed={concluidasNoCurso} total={course.lessons.length} />
             </div>
           </div>
-          <ListaDeEpisodios
-            courseSlug={course.slug}
-            aulas={course.lessons}
-            estados={estados}
-            capaUrl={capaComReserva({ coverUrl: course.coverUrl, areaCoverUrl: course.areaCoverUrl })}
-            aulaAtualId={lesson.id}
-            compacta
-          />
+          {/* Revisão final, Minor 1: sem limite de altura, um curso longo ao
+              lado de uma aba Dúvidas com muitas perguntas deixava o fim da
+              lista alcançável só depois de rolar o fórum inteiro. O
+              cabeçalho (progresso) acima fica fixo; só a lista rola dentro
+              de si mesma. */}
+          <div className="lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto">
+            <ListaDeEpisodios
+              courseSlug={course.slug}
+              aulas={course.lessons}
+              estados={estados}
+              capaUrl={capaComReserva({ coverUrl: course.coverUrl, areaCoverUrl: course.areaCoverUrl })}
+              aulaAtualId={lesson.id}
+              compacta
+            />
+          </div>
         </aside>
+
+        <div className="lg:col-start-1 lg:row-start-2">
+          <AbasDaAula
+            inicial={abaInicial}
+            abas={[
+              { id: 'sobre', rotulo: 'Sobre', conteudo: sobre },
+              { id: 'materiais', rotulo: `Materiais · ${attachments.length}`, conteudo: materiais },
+              {
+                id: 'duvidas',
+                rotulo: `Dúvidas · ${questions.length}`,
+                conteudo: <ForumSection lessonId={lesson.id} questions={questions} />,
+              },
+            ]}
+          />
+        </div>
       </div>
     </div>
   )

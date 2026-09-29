@@ -149,23 +149,23 @@ describe('paraLessonDetail — mapeamento 1:1 da linha de lessons', () => {
   })
 })
 
-describe('acharNavegacao — anterior/próxima', () => {
+describe('acharNavegacao — índice e próxima', () => {
   const lessons = [{ slug: 'aula-1' }, { slug: 'aula-2' }, { slug: 'aula-3' }]
 
-  it('primeira aula: sem anterior, com próxima', () => {
-    expect(acharNavegacao(lessons, 'aula-1')).toEqual({ indice: 0, anterior: null, proxima: 'aula-2' })
+  it('primeira aula: índice 0, com próxima', () => {
+    expect(acharNavegacao(lessons, 'aula-1')).toEqual({ indice: 0, proxima: 'aula-2' })
   })
 
-  it('aula do meio: anterior e próxima definidas', () => {
-    expect(acharNavegacao(lessons, 'aula-2')).toEqual({ indice: 1, anterior: 'aula-1', proxima: 'aula-3' })
+  it('aula do meio: índice 1, com próxima', () => {
+    expect(acharNavegacao(lessons, 'aula-2')).toEqual({ indice: 1, proxima: 'aula-3' })
   })
 
-  it('última aula: com anterior, sem próxima', () => {
-    expect(acharNavegacao(lessons, 'aula-3')).toEqual({ indice: 2, anterior: 'aula-2', proxima: null })
+  it('última aula: sem próxima', () => {
+    expect(acharNavegacao(lessons, 'aula-3')).toEqual({ indice: 2, proxima: null })
   })
 
-  it('curso com uma aula só: sem anterior, sem próxima', () => {
-    expect(acharNavegacao([{ slug: 'unica' }], 'unica')).toEqual({ indice: 0, anterior: null, proxima: null })
+  it('curso com uma aula só: sem próxima', () => {
+    expect(acharNavegacao([{ slug: 'unica' }], 'unica')).toEqual({ indice: 0, proxima: null })
   })
 
   it('slug que não está na lista (aula em rascunho para quem só tem "view", ou slug de outro curso): null', () => {

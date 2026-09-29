@@ -47,7 +47,6 @@ export type LessonDetail = {
 export type LessonView = {
   course: CourseView
   lesson: LessonDetail
-  anterior: string | null
   proxima: string | null
   /** Posição da aula no curso, 0-based. */
   indice: number
@@ -162,23 +161,27 @@ export function paraLessonDetail(row: LinhaAulaView): LessonDetail {
 
 /**
  * Posição de uma aula na lista JÁ FILTRADA/ordenada de `CourseView.lessons`,
- * e os vizinhos para os links de anterior/próxima.
+ * e o vizinho seguinte, para o link "Próxima ›".
  *
  * Recebe a lista pronta (não a linha crua) de propósito: se o slug pedido
  * pertencer a uma aula em rascunho (para quem só tem 'view') ou a uma aula de
  * outro curso, ele simplesmente não está nessa lista — `indexOf` dá -1 e a
  * função devolve null, sem precisar repetir nenhuma regra de acesso aqui.
+ *
+ * Sem `anterior`: a sala de aula não tem link "‹ Aula anterior" (revisão
+ * final, Minor 2 — a navegação para trás é a lista de episódios, sempre
+ * visível). O campo existiu e foi removido; se um link "anterior" voltar,
+ * ele reaparece aqui do mesmo jeito que `proxima`.
  */
 export function acharNavegacao(
   lessons: readonly { slug: string }[],
   lessonSlug: string,
-): { indice: number; anterior: string | null; proxima: string | null } | null {
+): { indice: number; proxima: string | null } | null {
   const indice = lessons.findIndex((l) => l.slug === lessonSlug)
   if (indice === -1) return null
 
   return {
     indice,
-    anterior: indice > 0 ? lessons[indice - 1]!.slug : null,
     proxima: indice < lessons.length - 1 ? lessons[indice + 1]!.slug : null,
   }
 }
