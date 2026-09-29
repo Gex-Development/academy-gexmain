@@ -16,23 +16,20 @@ export function FileiraArea({ fileira }: { fileira: Fileira }) {
         <Link
           href={`/area/${fileira.areaSlug}`}
           aria-label={`Ver todos os cursos de ${fileira.areaName}`}
-          className="shrink-0 text-sm text-texto-suave transition-colors hover:text-texto"
+          className="shrink-0 rounded text-sm text-texto-suave transition-colors hover:text-texto focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
         >
           Ver tudo →
         </Link>
       </div>
       {/* -mx/px: a rolagem vai até a borda da tela no celular, sem a página
-          ganhar rolagem horizontal (Review Focus 5). */}
+          ganhar rolagem horizontal (Review Focus 5). Só cursos aqui: uma
+          área sem curso publicado não vira FileiraArea — ela entra na
+          fileira "Em breve" única (fileira-em-breve.tsx, rodada de correção
+          1), montada pela página a partir das fileiras com `items` vazio. */}
       <ul className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
-        {fileira.items.length === 0 ? (
-          <li className={LARGURA}>
-            <div className="flex aspect-[16/10] items-center justify-center rounded-card border border-dashed border-vidro-borda bg-vidro text-sm text-texto-suave">
-              Em breve
-            </div>
-          </li>
-        ) : (
-          fileira.items.map((item) => <CourseCard key={item.id} item={item} className={LARGURA} />)
-        )}
+        {fileira.items.map((item) => (
+          <CourseCard key={item.id} item={item} className={LARGURA} />
+        ))}
       </ul>
     </section>
   )

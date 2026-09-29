@@ -179,7 +179,14 @@ export type Fileira = {
   key: string
   areaName: string
   areaSlug: string
-  /** Vazia = área sem curso publicado: a fileira mostra um card "Em breve". */
+  /**
+   * Capa da ÁREA — do grupo do catálogo quando ela tem curso publicado,
+   * senão da própria linha de `areas` (ver montarFileiras). Alimenta o
+   * ladrilho da fileira "Em breve" (fileira-em-breve.tsx, rodada de
+   * correção 1): antes de haver curso, é a única capa que a área tem.
+   */
+  areaCoverUrl: string | null
+  /** Vazia = área sem curso publicado. A página agrupa essas fileiras numa única FileiraEmBreve, em vez de uma fileira cheia por área vazia (rodada de correção 1: a maioria das áreas reais não tem curso ainda). */
   items: CatalogItem[]
 }
 
@@ -200,14 +207,26 @@ export function montarFileiras(
     if (!grupo.areaSlug) continue
     const items = grupo.items.filter((i) => passaNoFiltro(i, filtro))
     if (filtro !== 'tudo' && items.length === 0) continue
-    fileiras.push({ key: grupo.groupKey, areaName: grupo.areaName, areaSlug: grupo.areaSlug, items })
+    fileiras.push({
+      key: grupo.groupKey,
+      areaName: grupo.areaName,
+      areaSlug: grupo.areaSlug,
+      areaCoverUrl: grupo.areaCoverUrl,
+      items,
+    })
   }
 
   if (filtro === 'tudo') {
     const comCurso = new Set(catalog.grupos.map((g) => g.groupKey))
     for (const area of todasAsAreas) {
       if (comCurso.has(area.id)) continue
-      fileiras.push({ key: area.id, areaName: area.name, areaSlug: area.slug, items: [] })
+      fileiras.push({
+        key: area.id,
+        areaName: area.name,
+        areaSlug: area.slug,
+        areaCoverUrl: area.coverUrl,
+        items: [],
+      })
     }
   }
 

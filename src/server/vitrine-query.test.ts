@@ -283,10 +283,32 @@ describe('montarFileiras', () => {
     ])
     expect(montarFileiras(cat, [], 'tudo').map((f) => f.areaSlug)).toEqual(['copy', 'trafego'])
   })
-  it('área sem curso entra no fim, vazia (o card "Em breve")', () => {
+  it('área sem curso entra no fim, vazia (agrupada na fileira "Em breve" pela página)', () => {
     const cat = catalogo([grupo({ groupKey: 'a1', areaSlug: 'copy', items: [item()] })])
     const fileiras = montarFileiras(cat, [areaRow({ id: 'a1', slug: 'copy' }), areaRow({ id: 'a9', name: 'Design', slug: 'design' })], 'tudo')
     expect(fileiras.map((f) => [f.areaSlug, f.items.length])).toEqual([['copy', 1], ['design', 0]])
+  })
+  // Rodada de correção 1: FileiraEmBreve usa areaCoverUrl para o ladrilho de
+  // cada área sem curso, então a fonte precisa ser a certa nos dois casos.
+  it('areaCoverUrl vem do GRUPO quando a área tem curso, e da LINHA de áreas quando não tem', () => {
+    const cat = catalogo([
+      grupo({
+        groupKey: 'a1',
+        areaSlug: 'copy',
+        areaCoverUrl: 'https://exemplo.test/capa-do-grupo.png',
+        items: [item()],
+      }),
+    ])
+    const fileiras = montarFileiras(
+      cat,
+      [
+        areaRow({ id: 'a1', slug: 'copy', coverUrl: 'https://exemplo.test/capa-da-linha-ignorada.png' }),
+        areaRow({ id: 'a9', name: 'Design', slug: 'design', coverUrl: 'https://exemplo.test/capa-da-area-vazia.png' }),
+      ],
+      'tudo',
+    )
+    expect(fileiras.find((f) => f.areaSlug === 'copy')?.areaCoverUrl).toBe('https://exemplo.test/capa-do-grupo.png')
+    expect(fileiras.find((f) => f.areaSlug === 'design')?.areaCoverUrl).toBe('https://exemplo.test/capa-da-area-vazia.png')
   })
   it('grupo sem slug (o "Outros") não vira fileira', () => {
     expect(montarFileiras(catalogo([grupo({ areaSlug: null })]), [], 'tudo')).toEqual([])

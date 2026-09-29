@@ -24,7 +24,7 @@ export function FiltrosProgresso({ ativo }: { ativo: FiltroProgresso }) {
             href={valor === 'tudo' ? '/' : `/?filtro=${valor}`}
             aria-current={selecionado ? 'page' : undefined}
             className={cn(
-              'rounded-full border px-4 py-1.5 text-sm transition-colors',
+              'rounded-full border px-4 py-1.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-acao',
               selecionado
                 ? 'border-selecionado-borda bg-selecionado font-medium text-selecionado-texto'
                 : 'border-vidro-borda bg-vidro text-texto-suave hover:text-texto',

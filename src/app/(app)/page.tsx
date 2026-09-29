@@ -1,5 +1,6 @@
 import { DestaqueHome } from '@/components/catalog/destaque-home'
 import { FileiraArea } from '@/components/catalog/fileira-area'
+import { FileiraEmBreve } from '@/components/catalog/fileira-em-breve'
 import { FiltrosProgresso } from '@/components/catalog/filtros-progresso'
 import { getCurrentUser } from '@/lib/auth/session'
 import { listAreas } from '@/server/areas'
@@ -36,6 +37,12 @@ export default async function HomePage({
   // retomada. O filtro NÃO age no destaque (spec, seção 5).
   const destaque = escolherDestaque(catalog.onboarding, continuar !== null)
   const fileiras = montarFileiras(catalog, todasAsAreas, filtro)
+  // Rodada de correção 1: com dado real, a maioria das áreas não tem curso
+  // publicado — uma FileiraArea cheia por área vazia virava uma parede de
+  // caixas "Em breve" em branco. As com curso continuam uma fileira cada;
+  // as sem curso são agrupadas numa única FileiraEmBreve, no fim.
+  const fileirasComCurso = fileiras.filter((f) => f.items.length > 0)
+  const fileirasSemCurso = fileiras.filter((f) => f.items.length === 0)
   const primeiroNome = user!.fullName.split(' ')[0]
 
   return (
@@ -81,7 +88,12 @@ export default async function HomePage({
             : 'Nenhum curso neste filtro.'}
         </p>
       ) : (
-        fileiras.map((fileira) => <FileiraArea key={fileira.key} fileira={fileira} />)
+        <>
+          {fileirasComCurso.map((fileira) => (
+            <FileiraArea key={fileira.key} fileira={fileira} />
+          ))}
+          {fileirasSemCurso.length > 0 && <FileiraEmBreve fileiras={fileirasSemCurso} />}
+        </>
       )}
     </div>
   )
