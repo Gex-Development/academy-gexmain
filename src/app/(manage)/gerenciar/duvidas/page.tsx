@@ -40,7 +40,7 @@ export default async function DuvidasPage() {
               </p>
               <p className="mt-2 line-clamp-3 whitespace-pre-line text-sm">{question.body}</p>
               <Link
-                href={`/curso/${question.courseSlug}/aula/${question.lessonSlug}`}
+                href={`/curso/${question.courseSlug}/aula/${question.lessonSlug}?aba=duvidas`}
                 className="mt-2 inline-block text-xs text-marca-600 hover:underline"
               >
                 Abrir a aula e responder →

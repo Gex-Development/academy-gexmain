@@ -129,7 +129,7 @@ test('aluno pergunta, líder responde com selo de professor, aluno conclui a aul
 
     // A aluna pergunta e conclui a aula.
     await entrar(page, emailAluno)
-    await page.goto(`/curso/${slugCurso}/aula/objetivo`)
+    await page.goto(`/curso/${slugCurso}/aula/objetivo?aba=duvidas`)
 
     await page
       .getByPlaceholder('Ficou com alguma dúvida nesta aula?')
@@ -177,7 +177,7 @@ test('aluno pergunta, líder responde com selo de professor, aluno conclui a aul
     // "só o autor lê", a asserção acima continuaria passando mesmo com a
     // aluna sem acesso nenhum à resposta.
     await entrar(page, emailAluno)
-    await page.goto(`/curso/${slugCurso}/aula/objetivo`)
+    await page.goto(`/curso/${slugCurso}/aula/objetivo?aba=duvidas`)
     await expect(page.getByText('Usamos Alcance para topo de funil.')).toBeVisible()
     await expect(page.getByText('Professor').first()).toBeVisible()
   } finally {

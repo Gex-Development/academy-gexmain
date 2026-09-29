@@ -85,5 +85,6 @@ export async function getLessonView(
     lesson: paraLessonDetail(data as unknown as LinhaAulaView),
     anterior: navegacao.anterior,
     proxima: navegacao.proxima,
+    indice: navegacao.indice,
   }
 }

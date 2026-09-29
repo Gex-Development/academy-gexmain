@@ -49,6 +49,8 @@ export type LessonView = {
   lesson: LessonDetail
   anterior: string | null
   proxima: string | null
+  /** Posição da aula no curso, 0-based. */
+  indice: number
 }
 
 export const SELECT_CURSO_VIEW =
