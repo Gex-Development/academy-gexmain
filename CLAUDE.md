@@ -6,6 +6,7 @@ Plataforma interna de treinamento da GEX Corp: cada líder de área publica curs
 
 - **Produção:** https://academy.gexmain.com — Vercel, projeto `academy-gexmain` (time Gex). **Push na `main` publica sozinho.**
 - **Banco, login e arquivos:** Supabase, projeto **Gex Academy** — o único que pode ser tocado. A conta da empresa tem outros projetos; nenhum deles.
+- **Região:** o Supabase fica em São Paulo (`sa-east-1`), e o `vercel.json` fixa as funções em `gru1`, ao lado dele. Não remova: nos EUA (`iad1`, o padrão), cada clique fazia 5–6 idas ao banco cruzando o continente — 1,3–3,4 s por navegação, contra ~0,3 s em `gru1`.
 - **E-mail:** Resend (`nao-responda@academy.gexmain.com`); o SMTP do Supabase Auth aponta para ele.
 - Situação atual e pendências: `ONDE-PARAMOS.md`. Instalação: `README.md`. Especificações e planos: `docs/superpowers/`.
 
