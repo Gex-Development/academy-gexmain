@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { canAccessCourse } from '@/lib/access'
 import { getCurrentUser } from '@/lib/auth/session'
+import { acaoDoCurso } from '@/lib/progress/proxima-aula'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
 import { ok, toActionError, type ActionResult } from './result'
@@ -137,6 +138,10 @@ export async function getContinueWatching(): Promise<{
   courseTitle: string
   lessonSlug: string
   lessonTitle: string
+  /** Posição da aula a retomar, contando de 1 — o "Aula 2" de "Aula 2 de 3". */
+  lessonNumber: number
+  lessonCount: number
+  completedCount: number
 } | null> {
   const user = await getCurrentUser()
   if (!user || user.status !== 'active') return null
@@ -157,13 +162,19 @@ export async function getContinueWatching(): Promise<{
   if (!course || course.access === 'none') return null
 
   const concluidas = await getCompletedLessonIds(course.id)
-  const proxima = course.lessons.find((l) => !concluidas.has(l.id))
-  if (!proxima) return null
+  // Mesma regra do banner do curso e da lista de episódios: a primeira não
+  // concluída. Curso todo concluído não é "retomada".
+  const acao = acaoDoCurso(course.lessons, concluidas)
+  if (acao.tipo !== 'comecar' && acao.tipo !== 'continuar') return null
+  const proxima = course.lessons[acao.indice]!
 
   return {
     courseSlug: course.slug,
     courseTitle: course.title,
     lessonSlug: proxima.slug,
     lessonTitle: proxima.title,
+    lessonNumber: acao.indice + 1,
+    lessonCount: course.lessons.length,
+    completedCount: course.lessons.filter((l) => concluidas.has(l.id)).length,
   }
 }

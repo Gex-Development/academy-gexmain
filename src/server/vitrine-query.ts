@@ -150,11 +150,10 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
 
 /**
  * Acha o CatalogItem de um `slug` no catálogo já carregado — trilha inicial
- * ou qualquer grupo por área. Privada: capaDoCurso e corDaAreaDoCurso fazem
- * a mesma busca por motivos diferentes (o banner "Continue de onde parou"
- * precisa dos dois campos do MESMO curso — capa como degrau 1 da reserva,
- * cor de área como degrau 2, ver hero-banner.tsx), então a travessia mora
- * aqui uma vez só em vez de duplicada nas duas funções públicas.
+ * ou qualquer grupo por área. Procura na mesma travers para não duplicar:
+ * capaDoCurso e corDaAreaDoCurso precisam dos dois campos do MESMO curso
+ * (capa como degrau 1 da reserva, cor de área como degrau 2, ver
+ * hero-banner.tsx).
  *
  * Olha o onboarding também, não só os grupos por área: o curso "continue de
  * onde parou" pode ser a própria trilha inicial (ela também acumula
@@ -164,7 +163,7 @@ export function escolherDestaque(onboarding: CatalogItem | null, temRetomada: bo
  * que o próprio getCourseView confirmou acessível), mas as duas funções
  * públicas caem de volta para "sem capa"/"sem cor" em vez de lançar.
  */
-function encontrarItemDoCatalogo(catalog: Catalog, slug: string): CatalogItem | null {
+export function itemDoCatalogo(catalog: Catalog, slug: string): CatalogItem | null {
   if (catalog.onboarding?.slug === slug) return catalog.onboarding
 
   for (const grupo of catalog.grupos) {
@@ -186,7 +185,7 @@ function encontrarItemDoCatalogo(catalog: Catalog, slug: string): CatalogItem | 
  * consulta nova.
  */
 export function capaDoCurso(catalog: Catalog, slug: string): string | null {
-  return encontrarItemDoCatalogo(catalog, slug)?.coverUrl ?? null
+  return itemDoCatalogo(catalog, slug)?.coverUrl ?? null
 }
 
 /**
@@ -200,7 +199,7 @@ export function capaDoCurso(catalog: Catalog, slug: string): string | null {
  * (gradiente).
  */
 export function corDaAreaDoCurso(catalog: Catalog, slug: string): string | null {
-  return encontrarItemDoCatalogo(catalog, slug)?.areaColor ?? null
+  return itemDoCatalogo(catalog, slug)?.areaColor ?? null
 }
 
 /**
@@ -271,4 +270,75 @@ export function dadosDaArea(
     }
   }
   return null
+}
+
+export type FiltroProgresso = 'tudo' | 'continuar' | 'nao-iniciados' | 'concluidos'
+
+const FILTROS: readonly FiltroProgresso[] = ['tudo', 'continuar', 'nao-iniciados', 'concluidos']
+
+/** O filtro da home vem da URL (`?filtro=`) — entrada de usuário: o que não for um valor conhecido é "tudo". */
+export function lerFiltro(valor: string | string[] | undefined): FiltroProgresso {
+  return typeof valor === 'string' && (FILTROS as readonly string[]).includes(valor) ? (valor as FiltroProgresso) : 'tudo'
+}
+
+/**
+ * Spec 2026-09-29, seção 9.2. Curso bloqueado só aparece em "tudo": listar
+ * em "Não iniciados" algo que a pessoa nem pode abrir não faz sentido.
+ */
+export function passaNoFiltro(item: CatalogItem, filtro: FiltroProgresso): boolean {
+  if (filtro === 'tudo') return true
+  if (item.access === 'none') return false
+  const { completed, total } = item.progress
+  if (filtro === 'continuar') return completed > 0 && completed < total
+  if (filtro === 'nao-iniciados') return total > 0 && completed === 0
+  return total > 0 && completed === total
+}
+
+/**
+ * Capa de um curso com reserva (spec, seção 9.4): a do curso, senão a da
+ * área. Null = quem desenha usa o degradê de reserva. Hoje nenhum curso tem
+ * capa própria — sem este degrau a vitrine inteira seria degradê.
+ */
+export function capaComReserva(item: { coverUrl: string | null; areaCoverUrl: string | null }): string | null {
+  return item.coverUrl ?? item.areaCoverUrl ?? null
+}
+
+export type Fileira = {
+  /** Chave estável de lista React: o areaId. */
+  key: string
+  areaName: string
+  areaSlug: string
+  /** Vazia = área sem curso publicado: a fileira mostra um card "Em breve". */
+  items: CatalogItem[]
+}
+
+/**
+ * As fileiras da home (spec, seção 5): uma por área, na ordem do catálogo,
+ * com as áreas sem curso no fim. Com filtro, fileira que esvazia some — e
+ * área sem curso também, porque "Em breve" não é resposta a "Continuar".
+ * A trilha inicial não entra: ela é curso, não área, e tem o destaque.
+ */
+export function montarFileiras(
+  catalog: Catalog,
+  todasAsAreas: readonly AreaRow[],
+  filtro: FiltroProgresso,
+): Fileira[] {
+  const fileiras: Fileira[] = []
+
+  for (const grupo of catalog.grupos) {
+    if (!grupo.areaSlug) continue
+    const items = grupo.items.filter((i) => passaNoFiltro(i, filtro))
+    if (filtro !== 'tudo' && items.length === 0) continue
+    fileiras.push({ key: grupo.groupKey, areaName: grupo.areaName, areaSlug: grupo.areaSlug, items })
+  }
+
+  if (filtro === 'tudo') {
+    const comCurso = new Set(catalog.grupos.map((g) => g.groupKey))
+    for (const area of todasAsAreas) {
+      if (comCurso.has(area.id)) continue
+      fileiras.push({ key: area.id, areaName: area.name, areaSlug: area.slug, items: [] })
+    }
+  }
+
+  return fileiras
 }

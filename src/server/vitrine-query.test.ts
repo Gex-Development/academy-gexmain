@@ -3,10 +3,15 @@ import type { AreaRow } from './areas'
 import type { Catalog, CatalogItem } from './catalog-query'
 import {
   capaDoCurso,
+  capaComReserva,
   corDaAreaDoCurso,
   dadosDaArea,
   escolherDestaque,
+  itemDoCatalogo,
+  lerFiltro,
+  montarFileiras,
   montarVitrine,
+  passaNoFiltro,
   selecionarEmAndamento,
 } from './vitrine-query'
 
@@ -390,5 +395,103 @@ describe('dadosDaArea', () => {
     const dados = dadosDaArea(grupo({ areaName: 'Do grupo' }), linha({ name: 'Da linha' }))
 
     expect(dados!.nome).toBe('Do grupo')
+  })
+})
+
+describe('lerFiltro', () => {
+  it.each([
+    ['continuar', 'continuar'],
+    ['nao-iniciados', 'nao-iniciados'],
+    ['concluidos', 'concluidos'],
+    ['tudo', 'tudo'],
+  ])('%s → %s', (valor, esperado) => {
+    expect(lerFiltro(valor)).toBe(esperado)
+  })
+  // Review Focus 1: URL é entrada de usuário.
+  it('ausente, desconhecido ou repetido → tudo', () => {
+    expect(lerFiltro(undefined)).toBe('tudo')
+    expect(lerFiltro('xyz')).toBe('tudo')
+    expect(lerFiltro(['continuar', 'concluidos'])).toBe('tudo')
+  })
+})
+
+describe('passaNoFiltro', () => {
+  const p = (completed: number, total: number) => ({ completed, total, percent: total ? Math.round((completed / total) * 100) : 0 })
+
+  it('tudo aceita inclusive bloqueado', () => {
+    expect(passaNoFiltro(item({ access: 'none' }), 'tudo')).toBe(true)
+  })
+  it('bloqueado não entra em nenhum outro filtro', () => {
+    const bloqueado = item({ access: 'none', progress: p(0, 3) })
+    expect(passaNoFiltro(bloqueado, 'nao-iniciados')).toBe(false)
+    expect(passaNoFiltro(bloqueado, 'continuar')).toBe(false)
+    expect(passaNoFiltro(bloqueado, 'concluidos')).toBe(false)
+  })
+  it('continuar = começou e não terminou', () => {
+    expect(passaNoFiltro(item({ progress: p(1, 3) }), 'continuar')).toBe(true)
+    expect(passaNoFiltro(item({ progress: p(0, 3) }), 'continuar')).toBe(false)
+    expect(passaNoFiltro(item({ progress: p(3, 3) }), 'continuar')).toBe(false)
+  })
+  it('não iniciados = nada concluído, com aula', () => {
+    expect(passaNoFiltro(item({ progress: p(0, 3) }), 'nao-iniciados')).toBe(true)
+    expect(passaNoFiltro(item({ progress: p(0, 0) }), 'nao-iniciados')).toBe(false)
+  })
+  it('concluídos = todas, com aula', () => {
+    expect(passaNoFiltro(item({ progress: p(3, 3) }), 'concluidos')).toBe(true)
+    expect(passaNoFiltro(item({ progress: p(0, 0) }), 'concluidos')).toBe(false)
+  })
+})
+
+describe('capaComReserva', () => {
+  it('prefere a capa do curso', () => {
+    expect(capaComReserva({ coverUrl: 'c.png', areaCoverUrl: 'a.png' })).toBe('c.png')
+  })
+  it('sem capa do curso, usa a da área', () => {
+    expect(capaComReserva({ coverUrl: null, areaCoverUrl: 'a.png' })).toBe('a.png')
+  })
+  it('sem nenhuma, null — quem desenha usa o degradê de reserva', () => {
+    expect(capaComReserva({ coverUrl: null, areaCoverUrl: null })).toBeNull()
+  })
+})
+
+describe('itemDoCatalogo', () => {
+  it('acha em qualquer grupo e na trilha', () => {
+    const cat = catalogo([grupo({ items: [item({ slug: 'x' })] })], item({ slug: 'trilha', isOnboarding: true }))
+    expect(itemDoCatalogo(cat, 'x')?.slug).toBe('x')
+    expect(itemDoCatalogo(cat, 'trilha')?.slug).toBe('trilha')
+    expect(itemDoCatalogo(cat, 'nao-existe')).toBeNull()
+  })
+})
+
+describe('montarFileiras', () => {
+  const p = (completed: number, total: number) => ({ completed, total, percent: total ? Math.round((completed / total) * 100) : 0 })
+
+  it('uma fileira por área com curso, na ordem do catálogo', () => {
+    const cat = catalogo([
+      grupo({ groupKey: 'a1', areaName: 'Copy', areaSlug: 'copy', items: [item({ id: 'c1' })] }),
+      grupo({ groupKey: 'a2', areaName: 'Tráfego', areaSlug: 'trafego', items: [item({ id: 'c2' })] }),
+    ])
+    expect(montarFileiras(cat, [], 'tudo').map((f) => f.areaSlug)).toEqual(['copy', 'trafego'])
+  })
+  it('área sem curso entra no fim, vazia (o card "Em breve")', () => {
+    const cat = catalogo([grupo({ groupKey: 'a1', areaSlug: 'copy', items: [item()] })])
+    const fileiras = montarFileiras(cat, [areaRow({ id: 'a1', slug: 'copy' }), areaRow({ id: 'a9', name: 'Design', slug: 'design' })], 'tudo')
+    expect(fileiras.map((f) => [f.areaSlug, f.items.length])).toEqual([['copy', 1], ['design', 0]])
+  })
+  it('grupo sem slug (o "Outros") não vira fileira', () => {
+    expect(montarFileiras(catalogo([grupo({ areaSlug: null })]), [], 'tudo')).toEqual([])
+  })
+  it('com filtro, fileira que esvazia some — inclusive as de área sem curso', () => {
+    const cat = catalogo([
+      grupo({ groupKey: 'a1', areaSlug: 'copy', items: [item({ id: 'c1', progress: p(1, 3) })] }),
+      grupo({ groupKey: 'a2', areaSlug: 'trafego', items: [item({ id: 'c2', progress: p(0, 3) })] }),
+    ])
+    const fileiras = montarFileiras(cat, [areaRow({ id: 'a9', slug: 'design' })], 'continuar')
+    expect(fileiras.map((f) => f.areaSlug)).toEqual(['copy'])
+  })
+  // Review Focus 3.
+  it('nada passa no filtro → nenhuma fileira', () => {
+    const cat = catalogo([grupo({ items: [item({ progress: p(0, 3) })] })])
+    expect(montarFileiras(cat, [], 'concluidos')).toEqual([])
   })
 })
