@@ -59,7 +59,7 @@ test('capturas das telas do aluno', async ({ page }) => {
 
     await page.goto('/login')
     await page.getByLabel('E-mail').fill(email)
-    await page.getByLabel('Senha').fill(SENHA)
+    await page.getByLabel('Senha', { exact: true }).fill(SENHA)
     await page.getByRole('button', { name: 'Entrar' }).click({ timeout: 15000 })
     await expect(page).toHaveURL('/')
 

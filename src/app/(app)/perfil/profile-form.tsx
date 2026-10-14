@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { InputSenha } from '@/components/ui/input-senha'
 import { createBrowserSupabase } from '@/lib/supabase/client'
 import { updateProfile } from '@/server/account'
 
@@ -75,14 +76,14 @@ export function ProfileForm({
       <form onSubmit={trocarSenha} className="flex flex-col gap-4 rounded-card border border-borda bg-superficie p-4">
         <h2 className="text-sm font-semibold">Trocar senha</h2>
         <Field label="Nova senha" htmlFor="password" hint="Ao menos 8 caracteres">
-          <Input id="password" name="password" type="password" required autoComplete="new-password" />
+          <InputSenha id="password" name="password" required autoComplete="new-password" />
         </Field>
         <Field
           label="Repita a senha"
           htmlFor="confirm"
           error={senhaMsg?.tipo === 'erro' ? senhaMsg.texto : undefined}
         >
-          <Input id="confirm" name="confirm" type="password" required autoComplete="new-password" />
+          <InputSenha id="confirm" name="confirm" required autoComplete="new-password" />
         </Field>
         {senhaMsg?.tipo === 'ok' && <p className="text-xs text-sucesso">{senhaMsg.texto}</p>}
         <Button type="submit" variant="secundario" disabled={trocando} className="self-start">

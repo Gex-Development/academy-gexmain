@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
+import { InputSenha } from '@/components/ui/input-senha'
 import { createBrowserSupabase } from '@/lib/supabase/client'
 import { activateAccount } from '@/server/account'
 
@@ -56,10 +56,10 @@ export function DefinirSenhaForm({ ativarConta }: { ativarConta: boolean }) {
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <Field label="Nova senha" htmlFor="password" hint="Ao menos 8 caracteres">
-        <Input id="password" name="password" type="password" required autoComplete="new-password" />
+        <InputSenha id="password" name="password" required autoComplete="new-password" />
       </Field>
       <Field label="Repita a senha" htmlFor="confirm" error={erro ?? undefined}>
-        <Input id="confirm" name="confirm" type="password" required autoComplete="new-password" />
+        <InputSenha id="confirm" name="confirm" required autoComplete="new-password" />
       </Field>
       <Button type="submit" disabled={enviando}>
         {enviando ? 'Salvando…' : 'Salvar senha'}

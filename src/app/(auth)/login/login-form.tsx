@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { InputSenha } from '@/components/ui/input-senha'
 import { createBrowserSupabase } from '@/lib/supabase/client'
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
@@ -40,7 +41,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         <Input id="email" name="email" type="email" required autoComplete="email" />
       </Field>
       <Field label="Senha" htmlFor="password" error={erro ?? undefined}>
-        <Input id="password" name="password" type="password" required autoComplete="current-password" />
+        <InputSenha id="password" name="password" required autoComplete="current-password" />
       </Field>
       <Button type="submit" disabled={enviando}>
         {enviando ? 'Entrando…' : 'Entrar'}

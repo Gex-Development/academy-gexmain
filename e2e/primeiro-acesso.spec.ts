@@ -15,7 +15,7 @@ test('colaborador ativo entra e vê a navegação de colaborador', async ({ page
 
   await page.goto('/login')
   await page.getByLabel('E-mail').fill(email)
-  await page.getByLabel('Senha').fill('senha-de-teste-123')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste-123')
   await page.getByRole('button', { name: 'Entrar' }).click()
 
   await expect(page.getByRole('heading', { name: 'Olá, Ana' })).toBeVisible()
@@ -43,7 +43,7 @@ test('colaborador abre o próprio perfil e salva o nome', async ({ page }) => {
 
   await page.goto('/login')
   await page.getByLabel('E-mail').fill(email)
-  await page.getByLabel('Senha').fill('senha-de-teste-123')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste-123')
   await page.getByRole('button', { name: 'Entrar' }).click()
 
   await page.getByRole('link', { name: 'Perfil' }).click()
@@ -76,7 +76,7 @@ test('colaborador comum não abre a área do admin', async ({ page }) => {
 
   await page.goto('/login')
   await page.getByLabel('E-mail').fill(email)
-  await page.getByLabel('Senha').fill('senha-de-teste-123')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste-123')
   await page.getByRole('button', { name: 'Entrar' }).click()
   await expect(page.getByRole('heading', { name: 'Olá, Bruno' })).toBeVisible()
 
@@ -97,7 +97,7 @@ test('pessoa desativada vê o aviso e não acessa o conteúdo', async ({ page })
 
   await page.goto('/login')
   await page.getByLabel('E-mail').fill(email)
-  await page.getByLabel('Senha').fill('senha-de-teste-123')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste-123')
   await page.getByRole('button', { name: 'Entrar' }).click()
 
   await expect(page.getByText('Seu acesso à GEX Academy está desativado.')).toBeVisible()
@@ -117,7 +117,7 @@ test('admin convida pessoa e ela aparece na lista como convite pendente', async 
 
   await page.goto('/login')
   await page.getByLabel('E-mail').fill(emailAdmin)
-  await page.getByLabel('Senha').fill('senha-de-teste-123')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-teste-123')
   await page.getByRole('button', { name: 'Entrar' }).click()
   // Espera o login concluir antes de navegar: sem isto, o goto abaixo corre
   // com o signInWithPassword ainda em voo e cancela a requisição no meio,
