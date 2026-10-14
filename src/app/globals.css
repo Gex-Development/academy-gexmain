@@ -146,10 +146,16 @@ html { color-scheme: light; }
 :root {
   --fundo-pagina: var(--color-fundo);
   --trama: none;
+  /* Manchas de luz do fundo animado (html::before, abaixo). Fracas no claro:
+     ali o fundo é quase branco e qualquer cor forte pesa no texto. */
+  --aurora-1: rgb(0 96 212 / 0.07);
+  --aurora-2: rgb(1 205 255 / 0.06);
 }
 :root.dark {
   --fundo-pagina: radial-gradient(120% 70% at 15% -10%, #0e2a55 0%, #081429 45%, #050a16 100%);
   --trama: radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  --aurora-1: rgb(0 96 212 / 0.22);
+  --aurora-2: rgb(1 205 255 / 0.1);
 }
 
 body {
@@ -172,4 +178,32 @@ body::before {
   background-image: var(--trama);
   background-size: 18px 18px;
   pointer-events: none;
+}
+
+/* Fundo animado: duas manchas de luz que derivam devagar atrás de tudo.
+   Fica no html, não no body: em z-index -1 dentro do mesmo contexto, o que
+   vem antes na árvore pinta antes — assim a trama de pontos (body::before)
+   continua por cima das manchas. Só transform anima (GPU, sem repintar), e
+   o elemento é maior que a tela para a deriva nunca mostrar a borda. */
+html::before {
+  content: '';
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  background:
+    radial-gradient(38% 32% at 22% 28%, var(--aurora-1), transparent 70%),
+    radial-gradient(34% 30% at 78% 72%, var(--aurora-2), transparent 70%);
+  pointer-events: none;
+  animation: aurora-deriva 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes aurora-deriva {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  50% { transform: translate3d(6%, -4%, 0) rotate(12deg) scale(1.08); }
+  100% { transform: translate3d(-5%, 5%, 0) rotate(-8deg) scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html::before { animation: none; }
 }

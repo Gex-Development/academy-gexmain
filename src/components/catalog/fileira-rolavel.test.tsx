@@ -4,7 +4,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FileiraRolavel } from './fileira-rolavel'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 // jsdom não faz layout: scrollWidth/clientWidth/scrollLeft vêm zerados. Cada
 // teste define a geometria da lista à mão e dispara 'scroll' para remedir.
@@ -66,5 +69,58 @@ describe('FileiraRolavel', () => {
     geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
     expect(lista).toHaveAttribute('id', 'fileira-x-lista')
     expect(screen.getByRole('button', { name: 'Rolar Copy para a direita' })).toHaveAttribute('aria-controls', 'fileira-x-lista')
+  })
+
+  it('anda sozinha um passo por vez e volta ao começo no fim', () => {
+    vi.useFakeTimers()
+    const lista = montar()
+    const scrollBy = vi.fn()
+    const scrollTo = vi.fn()
+    lista.scrollBy = scrollBy as unknown as typeof lista.scrollBy
+    lista.scrollTo = scrollTo as unknown as typeof lista.scrollTo
+    geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
+
+    act(() => {
+      vi.advanceTimersByTime(7000)
+    })
+    expect(scrollBy).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }))
+
+    geometria(lista, { largura: 1000, conteudo: 3000, posicao: 2000 })
+    act(() => {
+      vi.advanceTimersByTime(7000)
+    })
+    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: 0 }))
+  })
+
+  it('pausada pelo botão, não anda', () => {
+    vi.useFakeTimers()
+    const lista = montar()
+    const scrollBy = vi.fn()
+    lista.scrollBy = scrollBy as unknown as typeof lista.scrollBy
+    geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
+
+    const pausar = screen.getByRole('button', { name: 'Pausar rolagem automática de Copy' })
+    act(() => {
+      fireEvent.click(pausar)
+    })
+    expect(screen.getByRole('button', { name: 'Retomar rolagem automática de Copy' })).toHaveAttribute('aria-pressed', 'true')
+    act(() => {
+      vi.advanceTimersByTime(20000)
+    })
+    expect(scrollBy).not.toHaveBeenCalled()
+  })
+
+  it('com o mouse em cima, não anda', () => {
+    vi.useFakeTimers()
+    const lista = montar()
+    const scrollBy = vi.fn()
+    lista.scrollBy = scrollBy as unknown as typeof lista.scrollBy
+    geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
+
+    fireEvent.pointerEnter(screen.getByRole('region', { name: 'Copy' }), { pointerType: 'mouse' })
+    act(() => {
+      vi.advanceTimersByTime(20000)
+    })
+    expect(scrollBy).not.toHaveBeenCalled()
   })
 })

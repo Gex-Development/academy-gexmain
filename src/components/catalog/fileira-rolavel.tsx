@@ -1,6 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+
+const INTERVALO_AUTOMATICO_MS = 5000
+const ESPERA_APOS_INTERACAO_MS = 8000
 
 /**
  * Cabeçalho + lista horizontal das fileiras da home, com setas ‹ › no lugar
@@ -11,6 +14,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
  * por cima de capa (pele "Vidro GEX", CLAUDE.md). Só aparecem quando a
  * fileira de fato transborda, e cada uma desliga ao chegar na ponta dela.
  * No celular ficam escondidas — lá deslizar o dedo é o gesto natural.
+ *
+ * Quando transborda, a fileira também anda sozinha, um card por vez, e volta
+ * ao começo ao chegar no fim. Para enquanto o mouse ou o foco estão nela, por
+ * alguns segundos depois de qualquer toque/rolagem manual, com a aba oculta e
+ * com movimento reduzido no sistema. O botão de pausa (WCAG 2.2.2) para de vez.
  */
 export function FileiraRolavel({
   tituloId,
@@ -27,6 +35,11 @@ export function FileiraRolavel({
   const listaRef = useRef<HTMLUListElement>(null)
   const [podeVoltar, setPodeVoltar] = useState(false)
   const [podeAvancar, setPodeAvancar] = useState(false)
+  const [pausada, setPausada] = useState(false)
+  const movimentoReduzido = useSyncExternalStore(assinarMovimentoReduzido, lerMovimentoReduzido, () => false)
+  // Refs, não state: mudam a cada hover/rolagem e não precisam re-renderizar.
+  const emUsoRef = useRef(false)
+  const ultimaInteracaoRef = useRef(0)
 
   const medir = useCallback(() => {
     const lista = listaRef.current
@@ -51,19 +64,57 @@ export function FileiraRolavel({
     }
   }, [medir])
 
+  const transborda = podeVoltar || podeAvancar
+  const automatica = transborda && !pausada && !movimentoReduzido
+
+  useEffect(() => {
+    if (!automatica) return
+    // Folga aleatória: fileiras empilhadas não andam todas no mesmo instante.
+    const intervalo = INTERVALO_AUTOMATICO_MS + Math.floor(Math.random() * 1500)
+    const id = window.setInterval(() => {
+      const lista = listaRef.current
+      if (!lista || emUsoRef.current || document.hidden) return
+      if (Date.now() - ultimaInteracaoRef.current < ESPERA_APOS_INTERACAO_MS) return
+      const noFim = lista.scrollLeft + lista.clientWidth >= lista.scrollWidth - 1
+      if (noFim) lista.scrollTo({ left: 0, behavior: 'smooth' })
+      else lista.scrollBy({ left: passoDeUmCard(lista), behavior: 'smooth' })
+    }, intervalo)
+    return () => window.clearInterval(id)
+  }, [automatica])
+
+  function marcarInteracao() {
+    ultimaInteracaoRef.current = Date.now()
+  }
+
   function rolar(sentido: 1 | -1) {
     const lista = listaRef.current
     if (!lista) return
+    marcarInteracao()
     const semAnimacao = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     // Quase uma tela de cards por clique; o snap-start encaixa no card seguinte.
     lista.scrollBy({ left: sentido * lista.clientWidth * 0.9, behavior: semAnimacao ? 'auto' : 'smooth' })
   }
 
-  const transborda = podeVoltar || podeAvancar
   const idDaLista = `${tituloId}-lista`
 
   return (
-    <section aria-labelledby={tituloId}>
+    <section
+      aria-labelledby={tituloId}
+      onPointerEnter={(e) => {
+        if (e.pointerType === 'mouse') emUsoRef.current = true
+      }}
+      onPointerLeave={() => {
+        emUsoRef.current = false
+      }}
+      onFocus={() => {
+        emUsoRef.current = true
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) emUsoRef.current = false
+      }}
+      onTouchStart={marcarInteracao}
+      onWheel={marcarInteracao}
+    >
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 id={tituloId} className="text-lg font-semibold tracking-tight text-texto">
           {titulo}
@@ -72,6 +123,16 @@ export function FileiraRolavel({
           {extra}
           {transborda && (
             <div className="hidden items-center gap-2 sm:flex">
+              {!movimentoReduzido && (
+                <BotaoDaFileira
+                  rotulo={pausada ? `Retomar rolagem automática de ${titulo}` : `Pausar rolagem automática de ${titulo}`}
+                  controla={idDaLista}
+                  pressionado={pausada}
+                  onClick={() => setPausada((p) => !p)}
+                >
+                  {pausada ? <IconeTocar /> : <IconePausar />}
+                </BotaoDaFileira>
+              )}
               <SetaDaFileira
                 sentido="voltar"
                 rotulo={`Rolar ${titulo} para a esquerda`}
@@ -106,6 +167,25 @@ export function FileiraRolavel({
   )
 }
 
+const CONSULTA_MOVIMENTO_REDUZIDO = '(prefers-reduced-motion: reduce)'
+
+function assinarMovimentoReduzido(avisar: () => void) {
+  const consulta = window.matchMedia?.(CONSULTA_MOVIMENTO_REDUZIDO)
+  consulta?.addEventListener('change', avisar)
+  return () => consulta?.removeEventListener('change', avisar)
+}
+
+function lerMovimentoReduzido() {
+  return window.matchMedia?.(CONSULTA_MOVIMENTO_REDUZIDO).matches ?? false
+}
+
+/** Distância entre o início de um card e o do seguinte (largura + gap). */
+function passoDeUmCard(lista: HTMLElement) {
+  const [primeiro, segundo] = lista.children as unknown as HTMLElement[]
+  const passo = primeiro && segundo ? segundo.offsetLeft - primeiro.offsetLeft : 0
+  return passo > 0 ? passo : lista.clientWidth * 0.9
+}
+
 function SetaDaFileira({
   sentido,
   rotulo,
@@ -120,18 +200,58 @@ function SetaDaFileira({
   onClick: () => void
 }) {
   return (
+    <BotaoDaFileira rotulo={rotulo} controla={controla} desligada={desligada} onClick={onClick}>
+      <span aria-hidden className="text-lg leading-none">
+        {sentido === 'voltar' ? '‹' : '›'}
+      </span>
+    </BotaoDaFileira>
+  )
+}
+
+function BotaoDaFileira({
+  rotulo,
+  controla,
+  desligada,
+  pressionado,
+  onClick,
+  children,
+}: {
+  rotulo: string
+  controla: string
+  desligada?: boolean
+  pressionado?: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
     <button
       type="button"
       aria-label={rotulo}
       title={rotulo}
       aria-controls={controla}
+      aria-pressed={pressionado}
       disabled={desligada}
       onClick={onClick}
-      className="inline-grid h-9 w-9 place-items-center rounded-full border border-vidro-borda bg-vidro text-texto-suave backdrop-blur-md transition-colors hover:border-selecionado-borda hover:text-texto focus:outline-none focus-visible:ring-2 focus-visible:ring-acao disabled:cursor-default disabled:opacity-40 disabled:hover:border-vidro-borda disabled:hover:text-texto-suave"
+      className="inline-grid h-9 w-9 place-items-center rounded-full border border-vidro-borda bg-vidro text-texto-suave backdrop-blur-md transition-[color,border-color,transform] active:scale-95 hover:border-selecionado-borda hover:text-texto focus:outline-none focus-visible:ring-2 focus-visible:ring-acao disabled:cursor-default disabled:opacity-40 disabled:hover:border-vidro-borda disabled:hover:text-texto-suave"
     >
-      <span aria-hidden className="text-lg leading-none">
-        {sentido === 'voltar' ? '‹' : '›'}
-      </span>
+      {children}
     </button>
+  )
+}
+
+function IconePausar() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+      <rect x="3.5" y="2.5" width="3" height="11" rx="1" />
+      <rect x="9.5" y="2.5" width="3" height="11" rx="1" />
+    </svg>
+  )
+}
+
+function IconeTocar() {
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className="ml-0.5 h-3.5 w-3.5" fill="currentColor">
+      <path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.2-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z" />
+    </svg>
   )
 }
