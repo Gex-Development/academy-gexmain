@@ -207,3 +207,50 @@ html::before {
 @media (prefers-reduced-motion: reduce) {
   html::before { animation: none; }
 }
+
+/* Entrada em cascata: cada filho direto sobe e aparece um pouco depois do
+   anterior. Usado no conteúdo da home e na lista de cada fileira. Só os
+   primeiros recebem atraso crescente — um card fora da tela não precisa
+   esperar a fila inteira. */
+.entrada-escalonada > * {
+  animation: entrada-sobe 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.entrada-escalonada > :nth-child(2) { animation-delay: 70ms; }
+.entrada-escalonada > :nth-child(3) { animation-delay: 140ms; }
+.entrada-escalonada > :nth-child(4) { animation-delay: 210ms; }
+.entrada-escalonada > :nth-child(5) { animation-delay: 280ms; }
+.entrada-escalonada > :nth-child(n + 6) { animation-delay: 350ms; }
+
+@keyframes entrada-sobe {
+  from { opacity: 0; transform: translate3d(0, 14px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Borda que acende sob o cursor. O elemento com [data-brilho] precisa ser
+   position: relative e ter border-radius; a FileiraRolavel atualiza
+   --brilho-x/--brilho-y no pointermove. A máscara recorta o degradê para
+   sobrar só o anel de 1,5px (o padding) — o miolo fica transparente. */
+[data-brilho]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: radial-gradient(
+    280px circle at var(--brilho-x, 50%) var(--brilho-y, 50%),
+    var(--color-acao),
+    transparent 70%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+[data-brilho]:hover::after { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .entrada-escalonada > * { animation: none; }
+  [data-brilho]::after { transition: none; }
+}

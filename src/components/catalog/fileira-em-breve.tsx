@@ -26,6 +26,7 @@ export function FileiraEmBreve({ fileiras }: { fileiras: Fileira[] }) {
             className="group block rounded-card focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
           >
             <div
+              data-brilho
               className={cn(
                 'relative aspect-[16/10] overflow-hidden rounded-card border border-vidro-borda',
                 fileira.areaCoverUrl ? 'bg-capa-fundo' : 'bg-gradient-to-br from-azul to-ciano',

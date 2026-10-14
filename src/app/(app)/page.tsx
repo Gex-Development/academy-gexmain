@@ -52,7 +52,7 @@ export default async function HomePage({
   const primeiroNome = user!.fullName.split(' ')[0]
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="entrada-escalonada flex flex-col gap-10">
       <header className="flex flex-col gap-5">
         <h1 className="text-3xl font-semibold tracking-tight text-texto">Olá, {primeiroNome}</h1>
         <FiltrosProgresso ativo={filtro} />

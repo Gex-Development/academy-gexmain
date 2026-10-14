@@ -20,7 +20,7 @@ export function CourseCard({ item, className }: { item: CatalogItem; className?:
         href={`/curso/${item.slug}`}
         className="group block rounded-card focus:outline-none focus-visible:ring-2 focus-visible:ring-acao"
       >
-        <div className="relative aspect-[16/10] overflow-hidden rounded-card border border-vidro-borda">
+        <div data-brilho className="relative aspect-[16/10] overflow-hidden rounded-card border border-vidro-borda">
           {/* Reserva final de capa (from-azul to-ciano): tokens fixos, iguais
               nos dois temas — sobre eles só vai o cadeado, nunca texto.
               opacity-45/grayscale ficam neste contêiner da CAPA (imagem ou

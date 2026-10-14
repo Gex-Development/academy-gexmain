@@ -114,6 +114,7 @@ export function FileiraRolavel({
       }}
       onTouchStart={marcarInteracao}
       onWheel={marcarInteracao}
+      onPointerMove={moverBrilho}
     >
       <div className="mb-3 flex items-center justify-between gap-4">
         <h2 id={tituloId} className="text-lg font-semibold tracking-tight text-texto">
@@ -159,7 +160,7 @@ export function FileiraRolavel({
       <ul
         ref={listaRef}
         id={idDaLista}
-        className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 scroll-px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="entrada-escalonada -mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 scroll-px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {children}
       </ul>
@@ -177,6 +178,16 @@ function assinarMovimentoReduzido(avisar: () => void) {
 
 function lerMovimentoReduzido() {
   return window.matchMedia?.(CONSULTA_MOVIMENTO_REDUZIDO).matches ?? false
+}
+
+/** Leva o centro do brilho da borda ([data-brilho], globals.css) até o cursor. */
+function moverBrilho(e: React.PointerEvent) {
+  if (e.pointerType !== 'mouse') return
+  const alvo = (e.target as Element).closest<HTMLElement>('[data-brilho]')
+  if (!alvo) return
+  const caixa = alvo.getBoundingClientRect()
+  alvo.style.setProperty('--brilho-x', `${e.clientX - caixa.left}px`)
+  alvo.style.setProperty('--brilho-y', `${e.clientY - caixa.top}px`)
 }
 
 /** Distância entre o início de um card e o do seguinte (largura + gap). */
