@@ -1,9 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import {
+  Children,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react'
 
-const INTERVALO_AUTOMATICO_MS = 5000
-const ESPERA_APOS_INTERACAO_MS = 8000
+/** Velocidade da rolagem automática, em pixels por segundo. */
+const VELOCIDADE_PX_S = 38
+const ESPERA_APOS_INTERACAO_MS = 6000
 
 /**
  * Cabeçalho + lista horizontal das fileiras da home, com setas ‹ › no lugar
@@ -15,10 +25,17 @@ const ESPERA_APOS_INTERACAO_MS = 8000
  * fileira de fato transborda, e cada uma desliga ao chegar na ponta dela.
  * No celular ficam escondidas — lá deslizar o dedo é o gesto natural.
  *
- * Quando transborda, a fileira também anda sozinha, um card por vez, e volta
- * ao começo ao chegar no fim. Para enquanto o mouse ou o foco estão nela, por
- * alguns segundos depois de qualquer toque/rolagem manual, com a aba oculta e
- * com movimento reduzido no sistema. O botão de pausa (WCAG 2.2.2) para de vez.
+ * Quando transborda, a fileira também rola sozinha, devagar e sem parar,
+ * como uma esteira: quando o primeiro card sai inteiro pela esquerda, ele vai
+ * para o fim da fila (a ordem dos filhos gira) e a rolagem recua a largura
+ * dele no mesmo quadro — o olho não vê o salto, e não é preciso duplicar card
+ * (cópia de link confunde leitor de tela). Se a fileira transborda menos que
+ * um card, não há folga para girar: ela vai e volta.
+ *
+ * Para enquanto o mouse ou o foco estão nela, por alguns segundos depois de
+ * qualquer toque/rolagem manual, com a aba oculta (o requestAnimationFrame
+ * dorme sozinho) e com movimento reduzido no sistema. O botão de pausa
+ * (WCAG 2.2.2) para de vez.
  */
 export function FileiraRolavel({
   tituloId,
@@ -40,6 +57,11 @@ export function FileiraRolavel({
   // Refs, não state: mudam a cada hover/rolagem e não precisam re-renderizar.
   const emUsoRef = useRef(false)
   const ultimaInteracaoRef = useRef(0)
+  // Quantos cards já foram para o fim da fila, e a largura a descontar da
+  // rolagem quando a nova ordem for pintada (useLayoutEffect abaixo).
+  const [giro, setGiro] = useState(0)
+  const recuoPendenteRef = useRef(0)
+  const posicaoRef = useRef(0)
 
   const medir = useCallback(() => {
     const lista = listaRef.current
@@ -68,19 +90,59 @@ export function FileiraRolavel({
   const automatica = transborda && !pausada && !movimentoReduzido
 
   useEffect(() => {
-    if (!automatica) return
-    // Folga aleatória: fileiras empilhadas não andam todas no mesmo instante.
-    const intervalo = INTERVALO_AUTOMATICO_MS + Math.floor(Math.random() * 1500)
-    const id = window.setInterval(() => {
-      const lista = listaRef.current
-      if (!lista || emUsoRef.current || document.hidden) return
-      if (Date.now() - ultimaInteracaoRef.current < ESPERA_APOS_INTERACAO_MS) return
-      const noFim = lista.scrollLeft + lista.clientWidth >= lista.scrollWidth - 1
-      if (noFim) lista.scrollTo({ left: 0, behavior: 'smooth' })
-      else lista.scrollBy({ left: passoDeUmCard(lista), behavior: 'smooth' })
-    }, intervalo)
-    return () => window.clearInterval(id)
+    const lista = listaRef.current
+    if (!automatica || !lista) return
+    // Fileiras empilhadas não andam em velocidade idêntica — parece menos máquina.
+    const velocidade = VELOCIDADE_PX_S * (0.85 + Math.random() * 0.3)
+    let sentido: 1 | -1 = 1
+    let anterior = performance.now()
+    let quadro = 0
+    posicaoRef.current = lista.scrollLeft
+
+    function andar(agora: number) {
+      // Teto de 64ms: ao voltar de uma aba oculta, o primeiro dt seria enorme.
+      const dt = Math.min(agora - anterior, 64)
+      anterior = agora
+      const parada =
+        !lista || emUsoRef.current || recuoPendenteRef.current > 0 ||
+        Date.now() - ultimaInteracaoRef.current < ESPERA_APOS_INTERACAO_MS
+      if (lista && parada) {
+        posicaoRef.current = lista.scrollLeft
+      } else if (lista) {
+        const maximo = lista.scrollWidth - lista.clientWidth
+        const passo = passoDeUmCard(lista)
+        const giraNaFila = maximo > passo + 1 && lista.children.length > 1
+        let posicao = posicaoRef.current + sentido * ((velocidade * dt) / 1000)
+        if (giraNaFila && posicao >= passo) {
+          recuoPendenteRef.current = passo
+          setGiro((g) => g + 1)
+        } else if (!giraNaFila && (posicao >= maximo || posicao <= 0)) {
+          posicao = Math.min(Math.max(posicao, 0), maximo)
+          sentido = sentido === 1 ? -1 : 1
+        }
+        posicaoRef.current = posicao
+        lista.scrollLeft = posicao
+      }
+      quadro = requestAnimationFrame(andar)
+    }
+    quadro = requestAnimationFrame(andar)
+    return () => cancelAnimationFrame(quadro)
   }, [automatica])
+
+  // A nova ordem já está no DOM e ainda não foi pintada: recua a rolagem pela
+  // largura do card que foi para o fim, e a esteira segue sem salto.
+  useLayoutEffect(() => {
+    const lista = listaRef.current
+    const recuo = recuoPendenteRef.current
+    if (!lista || recuo === 0) return
+    recuoPendenteRef.current = 0
+    posicaoRef.current = Math.max(posicaoRef.current - recuo, 0)
+    lista.scrollLeft = posicaoRef.current
+  }, [giro])
+
+  const itens = Children.toArray(children)
+  const deslocamento = itens.length > 0 ? giro % itens.length : 0
+  const itensNaOrdem = deslocamento === 0 ? itens : [...itens.slice(deslocamento), ...itens.slice(0, deslocamento)]
 
   function marcarInteracao() {
     ultimaInteracaoRef.current = Date.now()
@@ -160,9 +222,11 @@ export function FileiraRolavel({
       <ul
         ref={listaRef}
         id={idDaLista}
-        className="entrada-escalonada -mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 scroll-px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        // Sem snap enquanto a esteira anda: o encaixe puxaria de volta cada
+        // avanço de meio pixel.
+        className={`entrada-escalonada pontas-esfumadas -mx-4 flex gap-4 overflow-x-auto px-4 pb-2 scroll-px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${automatica ? 'snap-none' : 'snap-x'}`}
       >
-        {children}
+        {itensNaOrdem}
       </ul>
     </section>
   )

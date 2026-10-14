@@ -36,7 +36,7 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+    <form onSubmit={onSubmit} className="entrada-escalonada entrada-tardia flex flex-col gap-4">
       <Field label="E-mail" htmlFor="email">
         <Input id="email" name="email" type="email" required autoComplete="email" />
       </Field>

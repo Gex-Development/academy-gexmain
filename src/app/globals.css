@@ -148,14 +148,16 @@ html { color-scheme: light; }
   --trama: none;
   /* Manchas de luz do fundo animado (html::before, abaixo). Fracas no claro:
      ali o fundo é quase branco e qualquer cor forte pesa no texto. */
-  --aurora-1: rgb(0 96 212 / 0.07);
-  --aurora-2: rgb(1 205 255 / 0.06);
+  --aurora-1: rgb(0 96 212 / 0.1);
+  --aurora-2: rgb(1 205 255 / 0.08);
+  --aurora-3: rgb(95 140 204 / 0.08);
 }
 :root.dark {
   --fundo-pagina: radial-gradient(120% 70% at 15% -10%, #0e2a55 0%, #081429 45%, #050a16 100%);
   --trama: radial-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px);
-  --aurora-1: rgb(0 96 212 / 0.22);
-  --aurora-2: rgb(1 205 255 / 0.1);
+  --aurora-1: rgb(0 96 212 / 0.32);
+  --aurora-2: rgb(1 205 255 / 0.14);
+  --aurora-3: rgb(63 159 232 / 0.16);
 }
 
 body {
@@ -173,11 +175,17 @@ body {
 body::before {
   content: '';
   position: fixed;
-  inset: 0;
+  inset: -18px;
   z-index: -1;
   background-image: var(--trama);
   background-size: 18px 18px;
   pointer-events: none;
+  /* Anda exatamente um ladrilho (18px) e recomeça: o laço não tem emenda. */
+  animation: trama-deriva 9s linear infinite;
+}
+
+@keyframes trama-deriva {
+  to { transform: translate3d(18px, 18px, 0); }
 }
 
 /* Fundo animado: duas manchas de luz que derivam devagar atrás de tudo.
@@ -192,20 +200,22 @@ html::before {
   z-index: -1;
   background:
     radial-gradient(38% 32% at 22% 28%, var(--aurora-1), transparent 70%),
-    radial-gradient(34% 30% at 78% 72%, var(--aurora-2), transparent 70%);
+    radial-gradient(34% 30% at 78% 72%, var(--aurora-2), transparent 70%),
+    radial-gradient(26% 22% at 62% 18%, var(--aurora-3), transparent 70%);
   pointer-events: none;
-  animation: aurora-deriva 28s ease-in-out infinite alternate;
+  animation: aurora-deriva 20s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
   will-change: transform;
 }
 
 @keyframes aurora-deriva {
   0% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
-  50% { transform: translate3d(6%, -4%, 0) rotate(12deg) scale(1.08); }
-  100% { transform: translate3d(-5%, 5%, 0) rotate(-8deg) scale(1.02); }
+  50% { transform: translate3d(8%, -6%, 0) rotate(16deg) scale(1.12); }
+  100% { transform: translate3d(-7%, 6%, 0) rotate(-10deg) scale(1.04); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html::before { animation: none; }
+  html::before,
+  body::before { animation: none; }
 }
 
 /* Entrada em cascata: cada filho direto sobe e aparece um pouco depois do
@@ -253,4 +263,82 @@ html::before {
 @media (prefers-reduced-motion: reduce) {
   .entrada-escalonada > * { animation: none; }
   [data-brilho]::after { transition: none; }
+}
+
+/* ---- Tela de entrada (login, convite, nova senha) ---- */
+
+/* Surge: sobe, desfoca para nítido e aparece. A curva freia bem no fim, que
+   dá a sensação de peso. */
+.surge {
+  animation: surge 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes surge {
+  from { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.98); filter: blur(8px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+/* Flutua: a logo respira, subindo e descendo poucos pixels. */
+.flutua {
+  animation: flutua 6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+@keyframes flutua {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, -6px, 0); }
+}
+
+/* Moldura de luz: um feixe na cor de ação gira em volta do cartão. O feixe
+   é um quadrado bem maior que o cartão (cobre a diagonal em qualquer ângulo),
+   atrás dele; o cartão por cima deixa só 1,5px de borda à mostra. */
+.moldura-luz {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 1.5px;
+  background: var(--color-borda);
+}
+.moldura-luz::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -1;
+  width: 200%;
+  aspect-ratio: 1;
+  background: conic-gradient(from 0deg, transparent 0 45%, var(--color-acao) 78%, transparent 92%, transparent);
+  animation: moldura-gira 7s linear infinite;
+}
+@keyframes moldura-gira {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Capa viva: zoom lento e contínuo na capa do destaque da home. */
+.capa-viva {
+  animation: capa-viva 18s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+@keyframes capa-viva {
+  from { transform: scale(1) translate3d(0, 0, 0); }
+  to { transform: scale(1.08) translate3d(-1.5%, -1%, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surge,
+  .flutua,
+  .capa-viva,
+  .moldura-luz::before { animation: none; }
+}
+
+/* Cascata que espera o contêiner surgir antes de começar (campos do login). */
+.entrada-tardia > * { animation-delay: 350ms; }
+.entrada-tardia > :nth-child(2) { animation-delay: 430ms; }
+.entrada-tardia > :nth-child(3) { animation-delay: 510ms; }
+.entrada-tardia > :nth-child(n + 4) { animation-delay: 590ms; }
+
+/* Pontas esfumadas da fileira: o card some aos poucos ao sair pela borda em
+   vez de ser cortado seco. Os 16px coincidem com o px-4 da lista, então em
+   repouso nenhum card fica esmaecido. Máscara usa só alfa; o preto aqui não
+   é cor de tela. */
+.pontas-esfumadas {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 16px), transparent);
 }

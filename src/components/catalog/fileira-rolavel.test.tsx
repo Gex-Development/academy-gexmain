@@ -71,56 +71,58 @@ describe('FileiraRolavel', () => {
     expect(screen.getByRole('button', { name: 'Rolar Copy para a direita' })).toHaveAttribute('aria-controls', 'fileira-x-lista')
   })
 
-  it('anda sozinha um passo por vez e volta ao começo no fim', () => {
+  it('rola sozinha devagar e manda o primeiro card para o fim da fila', () => {
     vi.useFakeTimers()
-    const lista = montar()
-    const scrollBy = vi.fn()
-    const scrollTo = vi.fn()
-    lista.scrollBy = scrollBy as unknown as typeof lista.scrollBy
-    lista.scrollTo = scrollTo as unknown as typeof lista.scrollTo
+    render(
+      <FileiraRolavel tituloId="fileira-x" titulo="Copy">
+        <li>card 1</li>
+        <li>card 2</li>
+        <li>card 3</li>
+      </FileiraRolavel>,
+    )
+    const lista = screen.getByRole('list')
+    // passoDeUmCard cai em 90% da largura sem layout (jsdom): 900px.
     geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
 
     act(() => {
-      vi.advanceTimersByTime(7000)
+      vi.advanceTimersByTime(2000)
     })
-    expect(scrollBy).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }))
+    expect(lista.scrollLeft).toBeGreaterThan(40)
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('card 1')
 
-    geometria(lista, { largura: 1000, conteudo: 3000, posicao: 2000 })
+    // Perto de um card inteiro rolado: o próximo quadro passa do passo e gira.
     act(() => {
-      vi.advanceTimersByTime(7000)
+      vi.advanceTimersByTime(30000)
     })
-    expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: 0 }))
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('card 2')
+    expect(screen.getAllByRole('listitem')[2]).toHaveTextContent('card 1')
+    expect(lista.scrollLeft).toBeLessThan(900)
   })
 
   it('pausada pelo botão, não anda', () => {
     vi.useFakeTimers()
     const lista = montar()
-    const scrollBy = vi.fn()
-    lista.scrollBy = scrollBy as unknown as typeof lista.scrollBy
     geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
 
-    const pausar = screen.getByRole('button', { name: 'Pausar rolagem automática de Copy' })
     act(() => {
-      fireEvent.click(pausar)
+      fireEvent.click(screen.getByRole('button', { name: 'Pausar rolagem automática de Copy' }))
     })
     expect(screen.getByRole('button', { name: 'Retomar rolagem automática de Copy' })).toHaveAttribute('aria-pressed', 'true')
     act(() => {
-      vi.advanceTimersByTime(20000)
+      vi.advanceTimersByTime(5000)
     })
-    expect(scrollBy).not.toHaveBeenCalled()
+    expect(lista.scrollLeft).toBe(0)
   })
 
   it('com o mouse em cima, não anda', () => {
     vi.useFakeTimers()
     const lista = montar()
-    const scrollBy = vi.fn()
-    lista.scrollBy = scrollBy as unknown as typeof lista.scrollBy
     geometria(lista, { largura: 1000, conteudo: 3000, posicao: 0 })
 
     fireEvent.pointerEnter(screen.getByRole('region', { name: 'Copy' }), { pointerType: 'mouse' })
     act(() => {
-      vi.advanceTimersByTime(20000)
+      vi.advanceTimersByTime(5000)
     })
-    expect(scrollBy).not.toHaveBeenCalled()
+    expect(lista.scrollLeft).toBe(0)
   })
 })

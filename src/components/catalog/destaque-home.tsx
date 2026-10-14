@@ -38,7 +38,7 @@ export function DestaqueHome({
       >
         {capaUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={capaUrl} alt="" className="h-full w-full object-cover" />
+          <img src={capaUrl} alt="" className="capa-viva h-full w-full object-cover" />
         )}
       </div>
       <div className="min-w-0 flex-1 px-1 pb-1">

@@ -13,8 +13,14 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             (112px) dá ~184px de largura — cerca de metade do cartão de login,
             que tem max-w-sm (384px). Se crescer muito além disso, a logo passa
             a competir com o formulário em vez de apresentá-lo. */}
-        <GexLogo className="mx-auto mb-8 h-28 w-auto text-marca-600" />
-        <div className="rounded-card border border-borda bg-superficie p-6">{children}</div>
+        <div className="surge">
+          <GexLogo className="flutua mx-auto mb-8 h-28 w-auto text-marca-600" />
+        </div>
+        {/* A moldura (globals.css) desenha a borda de 1,5px com o feixe girando;
+            o raio de dentro desconta esse 1,5px para as curvas ficarem paralelas. */}
+        <div className="surge moldura-luz rounded-card shadow-destaque [animation-delay:150ms]">
+          <div className="rounded-[calc(var(--radius-card)-1.5px)] bg-superficie p-6">{children}</div>
+        </div>
       </div>
     </div>
   )
