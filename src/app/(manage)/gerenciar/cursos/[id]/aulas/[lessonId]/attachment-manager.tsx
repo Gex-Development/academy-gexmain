@@ -3,6 +3,7 @@
 import { useActionState, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { IconeEnviar } from '@/components/ui/cover-field'
 import { Field } from '@/components/ui/field'
 import { ALLOWED_ATTACHMENT_MIME, ATTACHMENT_BUCKET, validateAttachment } from '@/lib/storage/attachments'
 import { createBrowserSupabase } from '@/lib/supabase/client'
@@ -31,6 +32,7 @@ export function AttachmentManager({
   const formRef = useRef<HTMLFormElement>(null)
   const [enviando, setEnviando] = useState(false)
   const [erroEnvio, setErroEnvio] = useState<string | null>(null)
+  const [arquivoEscolhido, setArquivoEscolhido] = useState<string | null>(null)
   const [deleteState, deleteAction] = useActionState(deleteAttachment, null)
 
   // O upload não cabe num único <form action={...}> de Server Action: o
@@ -95,6 +97,7 @@ export function AttachmentManager({
       }
 
       formRef.current?.reset()
+      setArquivoEscolhido(null)
       router.refresh()
     } finally {
       setEnviando(false)
@@ -132,14 +135,35 @@ export function AttachmentManager({
 
       <form ref={formRef} onSubmit={enviar} className="flex flex-col gap-3">
         <Field label="Novo material" htmlFor="file" hint="Até 50 MB. PDF, Word, Excel, PowerPoint, CSV, ZIP ou imagem.">
-          <input id="file" name="file" type="file" required accept={ACCEPT} className="text-xs" />
+          <label
+            htmlFor="file"
+            className="relative flex cursor-pointer flex-col items-center gap-1.5 rounded-card border border-dashed border-borda bg-fundo px-4 py-6 text-center transition-colors hover:border-acao focus-within:border-acao motion-reduce:transition-none"
+          >
+            <IconeEnviar className="h-7 w-7 text-acao" />
+            <span className="max-w-full truncate text-sm font-medium text-texto">
+              {arquivoEscolhido ?? 'Clique aqui para escolher o arquivo'}
+            </span>
+            {arquivoEscolhido && <span className="text-xs text-texto-suave">Clique para trocar</span>}
+            <input
+              id="file"
+              name="file"
+              type="file"
+              required
+              accept={ACCEPT}
+              className="sr-only"
+              onChange={(evento) => {
+                setArquivoEscolhido(evento.target.files?.[0]?.name ?? null)
+                setErroEnvio(null)
+              }}
+            />
+          </label>
         </Field>
         {erro && (
           <p role="alert" className="text-xs text-perigo">
             {erro}
           </p>
         )}
-        <Button type="submit" variant="secundario" disabled={enviando}>
+        <Button type="submit" variant={arquivoEscolhido ? 'primario' : 'secundario'} disabled={enviando || !arquivoEscolhido}>
           {enviando ? 'Enviando…' : 'Anexar'}
         </Button>
       </form>

@@ -16,7 +16,7 @@ const ACCEPT = Object.keys(ALLOWED_CAPA_MIME).join(',')
  * envolve — então funciona nos dois temas sem citar cor nenhuma, que é a
  * regra do projeto.
  */
-function IconeEnviar({ className }: { className?: string }) {
+export function IconeEnviar({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
