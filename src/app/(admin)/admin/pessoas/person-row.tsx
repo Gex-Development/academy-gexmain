@@ -3,7 +3,7 @@
 import { useActionState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { AreaRow } from '@/server/areas'
-import { setPersonStatus, updatePerson, type PersonRow } from '@/server/people'
+import { deletePerson, setPersonStatus, updatePerson, type PersonRow } from '@/server/people'
 
 const ROTULO_PAPEL = { admin: 'Administrador', leader: 'Líder', member: 'Colaborador' } as const
 
@@ -18,7 +18,11 @@ export function PersonRowItem({
 }) {
   const [updateState, updateAction, updating] = useActionState(updatePerson, null)
   const [statusState, statusAction, changingStatus] = useActionState(setPersonStatus, null)
-  const erro = (!updateState?.ok && updateState?.error) || (!statusState?.ok && statusState?.error)
+  const [deleteState, deleteAction, deleting] = useActionState(deletePerson, null)
+  const erro =
+    (!updateState?.ok && updateState?.error) ||
+    (!statusState?.ok && statusState?.error) ||
+    (!deleteState?.ok && deleteState?.error)
 
   return (
     <li className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
@@ -108,18 +112,42 @@ export function PersonRowItem({
         </fieldset>
       </form>
 
-      <form action={statusAction}>
-        <input type="hidden" name="id" value={person.id} />
-        <input type="hidden" name="status" value={person.status === 'inactive' ? 'active' : 'inactive'} />
-        <Button
-          type="submit"
-          variant={person.status === 'inactive' ? 'secundario' : 'perigo'}
-          disabled={changingStatus}
-          className="px-3 py-1 text-xs"
+      <div className="flex gap-2 md:flex-col">
+        <form action={statusAction}>
+          <input type="hidden" name="id" value={person.id} />
+          <input type="hidden" name="status" value={person.status === 'inactive' ? 'active' : 'inactive'} />
+          <Button
+            type="submit"
+            variant={person.status === 'inactive' ? 'secundario' : 'perigo'}
+            disabled={changingStatus}
+            className="w-full px-3 py-1 text-xs"
+          >
+            {person.status === 'inactive' ? 'Reativar' : 'Desativar'}
+          </Button>
+        </form>
+        <form
+          action={deleteAction}
+          onSubmit={(e) => {
+            if (
+              !confirm(
+                `Excluir ${person.fullName} de vez? Isso apaga a conta, o progresso e as perguntas e respostas dessa pessoa no fórum. Os cursos e materiais dela passam para você. Não dá para desfazer — para só tirar o acesso, use Desativar.`,
+              )
+            ) {
+              e.preventDefault()
+            }
+          }}
         >
-          {person.status === 'inactive' ? 'Reativar' : 'Desativar'}
-        </Button>
-      </form>
+          <input type="hidden" name="id" value={person.id} />
+          <Button
+            type="submit"
+            variant="perigo"
+            disabled={deleting}
+            className="w-full px-3 py-1 text-xs"
+          >
+            {deleting ? 'Excluindo…' : 'Excluir'}
+          </Button>
+        </form>
+      </div>
     </li>
   )
 }

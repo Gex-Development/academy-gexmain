@@ -1,10 +1,17 @@
 import { afterAll, describe, expect, it } from 'vitest'
+import { excluirConta } from '@/server/people-exclusao'
 import { adminClient, authClient, createTestUser, criarLixeira } from './client'
 
 const db = adminClient()
 const lixeira = criarLixeira()
+// Fora da lixeira: o teste apaga esta conta, e deleteUser em id inexistente
+// derrubaria limpar(). Se o teste falhar antes, sobra aqui para o afterAll.
+const contasAExcluir: string[] = []
 
-afterAll(() => lixeira.limpar())
+afterAll(async () => {
+  await lixeira.limpar()
+  for (const id of contasAExcluir) await db.auth.admin.deleteUser(id)
+})
 
 describe('perfis', () => {
   it('cria perfil de colaborador com status ativo e área', async () => {
@@ -75,6 +82,107 @@ describe('perfis', () => {
 
     const { data } = await db.from('profiles').select('area_id').eq('id', id).single()
     expect(data!.area_id).toBeNull()
+  })
+})
+
+describe('excluirConta', () => {
+  it('passa cursos, materiais e concessões ao herdeiro e apaga a conta e o fórum dela', async () => {
+    const stamp = Date.now()
+    const { data: area } = await db
+      .from('areas')
+      .insert({ name: 'Exclusão', slug: `exclusao-${stamp}` })
+      .select('id')
+      .single()
+    lixeira.area(area!.id)
+
+    const herdeiro = await createTestUser({
+      email: `herdeiro-${stamp}@gexcorp.com.br`,
+      fullName: 'Herdeiro',
+      role: 'admin',
+    })
+    lixeira.usuario(herdeiro)
+    const colega = await createTestUser({
+      email: `colega-${stamp}@gexcorp.com.br`,
+      fullName: 'Colega',
+      role: 'member',
+    })
+    lixeira.usuario(colega)
+    const alvo = await createTestUser({
+      email: `alvo-${stamp}@gexcorp.com.br`,
+      fullName: 'Alvo',
+      role: 'leader',
+      areaId: area!.id,
+    })
+    contasAExcluir.push(alvo)
+
+    const { data: curso } = await db
+      .from('courses')
+      .insert({ title: 'Curso do alvo', slug: `curso-alvo-${stamp}`, area_id: area!.id, owner_id: alvo })
+      .select('id')
+      .single()
+    lixeira.curso(curso!.id)
+
+    const { data: aula } = await db
+      .from('lessons')
+      .insert({
+        course_id: curso!.id,
+        title: 'Aula',
+        slug: `aula-${stamp}`,
+        video_provider: 'youtube',
+        video_ref: 'abc',
+      })
+      .select('id')
+      .single()
+
+    const { data: anexo } = await db
+      .from('lesson_attachments')
+      .insert({
+        lesson_id: aula!.id,
+        file_name: 'a.pdf',
+        storage_path: `teste/${stamp}.pdf`,
+        mime_type: 'application/pdf',
+        size_bytes: 1,
+        uploaded_by: alvo,
+      })
+      .select('id')
+      .single()
+
+    const { data: liberacao } = await db
+      .from('course_access')
+      .insert({ user_id: colega, course_id: curso!.id, granted_by: alvo })
+      .select('id')
+      .single()
+
+    const { data: extra } = await db
+      .from('area_access')
+      .insert({ user_id: colega, area_id: area!.id, granted_by: alvo })
+      .select('id')
+      .single()
+
+    const { data: pergunta } = await db
+      .from('questions')
+      .insert({ lesson_id: aula!.id, author_id: alvo, body: 'Pergunta do alvo' })
+      .select('id')
+      .single()
+
+    await excluirConta(db, alvo, herdeiro)
+
+    const { data: perfil } = await db.from('profiles').select('id').eq('id', alvo).maybeSingle()
+    expect(perfil).toBeNull()
+    const { data: conta } = await db.auth.admin.getUserById(alvo)
+    expect(conta.user).toBeNull()
+
+    const leCurso = await db.from('courses').select('owner_id').eq('id', curso!.id).single()
+    expect(leCurso.data?.owner_id).toBe(herdeiro)
+    const leAnexo = await db.from('lesson_attachments').select('uploaded_by').eq('id', anexo!.id).single()
+    expect(leAnexo.data?.uploaded_by).toBe(herdeiro)
+    const leLiberacao = await db.from('course_access').select('granted_by').eq('id', liberacao!.id).single()
+    expect(leLiberacao.data?.granted_by).toBe(herdeiro)
+    const leExtra = await db.from('area_access').select('granted_by').eq('id', extra!.id).single()
+    expect(leExtra.data?.granted_by).toBe(herdeiro)
+
+    const lePergunta = await db.from('questions').select('id').eq('id', pergunta!.id).maybeSingle()
+    expect(lePergunta.data).toBeNull()
   })
 })
 

@@ -7,6 +7,7 @@ import { assertRole } from '@/lib/auth/guards'
 import { getCurrentUser } from '@/lib/auth/session'
 import { createAdminSupabase } from '@/lib/supabase/admin'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { excluirConta } from './people-exclusao'
 import { ok, toActionError, type ActionResult } from './result'
 
 export type PersonRow = {
@@ -265,6 +266,32 @@ export async function setPersonStatus(
     if (error) throw error
 
     revalidatePath('/admin/pessoas')
+    return ok({ id: parsed.data.id })
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+const deleteSchema = z.object({ id: z.string().uuid() })
+
+export async function deletePerson(
+  _prev: unknown,
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const currentUser = assertRole(await getCurrentUser(), ['admin'])
+
+    const parsed = deleteSchema.safeParse(Object.fromEntries(formData))
+    if (!parsed.success) return { ok: false, error: 'Dados inválidos.' }
+
+    if (parsed.data.id === currentUser.id) {
+      return { ok: false, error: 'Você não pode excluir a si mesmo.' }
+    }
+
+    await excluirConta(createAdminSupabase(), parsed.data.id, currentUser.id)
+
+    revalidatePath('/admin/pessoas')
+    revalidatePath('/')
     return ok({ id: parsed.data.id })
   } catch (error) {
     return toActionError(error)
